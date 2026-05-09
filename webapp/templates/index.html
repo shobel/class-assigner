@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Class Assignment Optimizer</title>
+    <link rel="stylesheet" href="/static/css/design-system.css">
+    <link rel="stylesheet" href="/static/css/components.css">
+    <link rel="stylesheet" href="/static/css/animations.css">
+    <link rel="stylesheet" href="/static/css/homeroom.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="sidebar-header">
+                <h1><em>Home</em>room</h1>
+            </div>
+
+            <div class="sidebar-section">
+                <button class="btn btn-primary" onclick="showConfigModal()">
+                    ⚙️ Configure Rules
+                </button>
+            </div>
+
+            <div class="sidebar-section">
+                <h3>Grades</h3>
+                <button class="btn btn-secondary" onclick="showImportModal()">
+                    ➕ Import Grade
+                </button>
+                <div id="gradeList" class="grade-list">
+                    <!-- Grades will be loaded here -->
+                </div>
+            </div>
+
+            <div class="sidebar-footer">
+                <p>🔒 All data stays local</p>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <div id="welcomeScreen" class="welcome-screen">
+                <div class="empty-state-icon">📚</div>
+                <h2>Welcome to Class Assignment Optimizer</h2>
+                <p class="empty-state-subtitle">
+                    Optimize student placement with AI-powered balance
+                </p>
+                <div class="empty-state-steps">
+                    <div class="empty-step">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <div class="step-title">Configure Rules</div>
+                            <div class="step-desc">Set property weights & priorities</div>
+                        </div>
+                    </div>
+                    <div class="empty-step">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <div class="step-title">Import Students</div>
+                            <div class="step-desc">Upload CSV for each grade</div>
+                        </div>
+                    </div>
+                    <div class="empty-step">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <div class="step-title">Assign Classes</div>
+                            <div class="step-desc">Run optimizer & view results</div>
+                        </div>
+                    </div>
+                </div>
+                <button class="btn btn-large btn-primary" onclick="showConfigModal()">
+                    ⚙️ Get Started
+                </button>
+            </div>
+
+            <div id="configRequiredScreen" class="config-required-screen" style="display: none;">
+                <h2>⚠️ Configuration Required</h2>
+                <p>Before you can assign classes, you need to configure global assignment rules.</p>
+                <button class="btn btn-large btn-primary" onclick="showConfigModal()">
+                    Configure Assignment Rules
+                </button>
+            </div>
+
+            <div id="assignScreen" class="assign-screen" style="display: none;">
+                <div class="assign-header">
+                    <div class="assign-header-left">
+                        <h2 id="assignGradeName">Grade</h2>
+                        <span id="assignmentStatus" class="assignment-status"></span>
+                    </div>
+                    <div class="assign-actions">
+                        <button class="btn btn-secondary" onclick="showGradeActions()" title="More options">
+                            ⋯
+                        </button>
+                        <button id="viewAssignmentBtn" class="btn btn-primary" onclick="viewAssignment()" style="display: none;">
+                            📊 View Assignment
+                        </button>
+                        <button id="backToListBtn" class="btn btn-secondary" onclick="backToStudentList()" style="display: none;">
+                            ← Back to Student List
+                        </button>
+                        <label>
+                            Classes:
+                            <input type="number" id="numClasses" min="2" max="10" value="5"
+                                   onchange="updateNumClasses()">
+                        </label>
+                        <button id="assignBtn" class="btn btn-primary" onclick="runAssignment()">
+                            🎯 Assign Classes
+                        </button>
+                        <button id="exportBtn" class="btn btn-secondary" onclick="exportAssignments()" style="display: none;">
+                            📥 Export CSV
+                        </button>
+                    </div>
+                </div>
+
+                <div id="studentListView" class="student-list-view">
+                    <!-- Student list before assignment -->
+                </div>
+
+                <div id="assignmentResultView" class="assignment-result-view" style="display: none;">
+                    <div id="assignmentStats" class="assignment-stats">
+                        <!-- Overall statistics will be shown here -->
+                    </div>
+                    <div id="classBoxesContainer" class="class-boxes-container">
+                        <!-- Class boxes will be shown here -->
+                    </div>
+                </div>
+
+                <div id="iconLegend" class="icon-legend" style="display: none;">
+                    <h4>Icon Legend</h4>
+                    <div class="legend-items">
+                        <div class="legend-item"><span>♀️</span> Girl</div>
+                        <div class="legend-item"><span>♂️</span> Boy</div>
+                        <div class="legend-item"><span>⚠️</span> Problematic</div>
+                        <div class="legend-item"><span>🎯</span> Special Needs</div>
+                        <div class="legend-item"><span>📐H/M/L</span> Math Level</div>
+                        <div class="legend-item"><span>📚H/M/L</span> Reading Level</div>
+                        <div class="legend-item"><span>🤝</span> Has Friend in Class</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Student Detail Panel (slides in from right) -->
+        <div id="studentDetailPanel" class="student-detail-panel">
+            <div class="panel-header">
+                <h3 id="studentDetailName">Student</h3>
+                <button class="btn-close" onclick="closeStudentDetail()">×</button>
+            </div>
+            <div class="panel-body" id="studentDetailBody">
+                <!-- Student details loaded here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Grade Actions Modal -->
+    <div id="gradeActionsModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Grade Options</h2>
+                <button class="btn-close" onclick="closeGradeActions()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="action-list">
+                    <button class="action-btn" onclick="reImportGrade()">
+                        <span class="action-icon">📥</span>
+                        <div class="action-content">
+                            <div class="action-title">Re-import Students</div>
+                            <div class="action-desc">Upload new CSV to replace current students</div>
+                        </div>
+                    </button>
+                    <button class="action-btn action-btn-danger" onclick="confirmDeleteGrade()">
+                        <span class="action-icon">🗑️</span>
+                        <div class="action-content">
+                            <div class="action-title">Delete Grade</div>
+                            <div class="action-desc">Remove this grade and all data</div>
+                        </div>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Config Modal -->
+    <div id="configModal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>⚙️ Assignment Rules Configuration</h2>
+                <button class="btn-close" onclick="closeConfigModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <p class="help-text">
+                    Configure which student properties matter for class balance and their priority levels.
+                    Higher weights = higher priority for balance.
+                </p>
+
+                <div id="configPropertiesList">
+                    <!-- Properties will be loaded here -->
+                </div>
+
+                <div class="form-group">
+                    <label>Friend Placement Weight (Lower = Less Priority)</label>
+                    <input type="number" id="friendWeight" min="0" max="200" value="30">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeConfigModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="saveConfig()">Save Configuration</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Balance Info Modal -->
+    <div id="balanceInfoModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>📊 Understanding Balance Metrics</h2>
+                <button class="btn-close" onclick="closeBalanceInfoModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="info-section">
+                    <h4>What is "Balance"?</h4>
+                    <p>Balance measures how evenly students are distributed across classes. Perfect balance means each class has similar numbers of students in each category.</p>
+                </div>
+
+                <div class="info-section">
+                    <h4>Balance Quality Ratings</h4>
+                    <ul>
+                        <li><strong>Perfect:</strong> Nearly identical distribution across all classes</li>
+                        <li><strong>Excellent:</strong> Very minor differences between classes</li>
+                        <li><strong>Good:</strong> Some variation but still well-balanced</li>
+                        <li><strong>Fair:</strong> Noticeable differences between classes</li>
+                    </ul>
+                </div>
+
+                <div class="info-section">
+                    <h4>What is "Variance"?</h4>
+                    <p>Variance is a statistical measure of how spread out the numbers are. Lower variance = better balance.</p>
+                    <ul>
+                        <li><strong>0.0-0.5:</strong> Perfect balance (all classes nearly identical)</li>
+                        <li><strong>0.5-1.0:</strong> Excellent balance (minor differences)</li>
+                        <li><strong>1.0-1.5:</strong> Good balance (acceptable variation)</li>
+                        <li><strong>1.5+:</strong> Fair balance (noticeable differences)</li>
+                    </ul>
+                </div>
+
+                <div class="info-section">
+                    <h4>Example</h4>
+                    <p>If you have 5 classes and 45 girls total:</p>
+                    <ul>
+                        <li>Perfect: Each class has exactly 9 girls (variance = 0.0)</li>
+                        <li>Excellent: Classes have 8, 9, 9, 9, 10 girls (variance = 0.4)</li>
+                        <li>Good: Classes have 7, 9, 9, 10, 10 girls (variance = 1.2)</li>
+                        <li>Fair: Classes have 6, 8, 9, 10, 12 girls (variance = 2.0)</li>
+                    </ul>
+                </div>
+
+                <div class="info-section">
+                    <h4>Friend Satisfaction</h4>
+                    <p>Percentage of students who have at least one friend from their friend list in their assigned class. Higher is better!</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" onclick="closeBalanceInfoModal()">Got it!</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Import Modal -->
+    <div id="importModal" class="modal">
+        <div class="modal-content modal-large">
+            <div class="modal-header">
+                <h2>📥 Import Student Data</h2>
+                <button class="btn-close" onclick="closeImportModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div id="importStep1" class="import-step">
+                    <div class="form-group">
+                        <label>Grade Name</label>
+                        <input type="text" id="importGradeName" placeholder="e.g., 1st Grade, 2nd Grade">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Number of Classes</label>
+                        <input type="number" id="importNumClasses" min="2" max="10" value="5">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Upload CSV File</label>
+                        <input type="file" id="csvFile" accept=".csv" onchange="previewCSV()">
+                    </div>
+
+                    <div id="csvPreview" style="display: none;">
+                        <h4>Preview (first 5 rows)</h4>
+                        <div id="csvPreviewTable"></div>
+                    </div>
+                </div>
+
+                <div id="importStep2" class="import-step" style="display: none;">
+                    <h4>Column Mapping</h4>
+                    <p class="help-text">Match your CSV columns to student properties:</p>
+                    <div id="columnMappings">
+                        <!-- Mappings will be generated here -->
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeImportModal()">Cancel</button>
+                <button id="importNextBtn" class="btn btn-primary" onclick="importNext()" disabled>
+                    Next: Map Columns
+                </button>
+                <button id="importConfirmBtn" class="btn btn-primary" onclick="confirmImport()" style="display: none;">
+                    Import Students
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/assignment-animation.js"></script>
+    <script src="/static/js/homeroom-render.js"></script>
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

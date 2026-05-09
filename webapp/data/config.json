@@ -1,0 +1,115 @@
+{
+  "active_school_year": "2025\u201326",
+  "available_school_years": [
+    "2025\u201326"
+  ],
+  "friend_weight": 30,
+  "properties": [
+    {
+      "display_name": "Gender",
+      "enabled": true,
+      "icon": "\u2640\ufe0f\u2642\ufe0f",
+      "name": "gender",
+      "type": "categorical",
+      "values": [
+        "g",
+        "b"
+      ],
+      "weight": 40
+    },
+    {
+      "display_name": "Behavior",
+      "enabled": true,
+      "icon": "\u26a0\ufe0f",
+      "name": "behavior",
+      "type": "categorical",
+      "values": [
+        "cooperative",
+        "neutral",
+        "disruptive"
+      ],
+      "weight": 100
+    },
+    {
+      "display_name": "Independence",
+      "enabled": true,
+      "icon": "\ud83c\udfaf",
+      "name": "independence",
+      "type": "categorical",
+      "values": [
+        "high",
+        "neutral",
+        "low"
+      ],
+      "weight": 60
+    },
+    {
+      "display_name": "IEP",
+      "enabled": true,
+      "icon": "\ud83d\udccb",
+      "name": "iep",
+      "type": "boolean",
+      "weight": 100
+    },
+    {
+      "display_name": "504 Plan",
+      "enabled": true,
+      "icon": "\ud83d\udcc4",
+      "name": "504",
+      "type": "boolean",
+      "weight": 100
+    },
+    {
+      "display_name": "ESL",
+      "enabled": true,
+      "icon": "\ud83c\udf10",
+      "name": "esl",
+      "type": "boolean",
+      "weight": 80
+    },
+    {
+      "display_name": "GATE",
+      "enabled": true,
+      "icon": "\u2b50",
+      "name": "gate",
+      "type": "boolean",
+      "weight": 60
+    },
+    {
+      "display_name": "Math Level",
+      "enabled": true,
+      "icon": "\ud83d\udcd0",
+      "name": "math",
+      "type": "categorical",
+      "values": [
+        "h",
+        "m",
+        "l"
+      ],
+      "weight": 60
+    },
+    {
+      "display_name": "Reading Level",
+      "enabled": true,
+      "icon": "\ud83d\udcda",
+      "name": "reading",
+      "type": "categorical",
+      "values": [
+        "h",
+        "m",
+        "l"
+      ],
+      "weight": 60
+    },
+    {
+      "display_name": "Friendships",
+      "enabled": true,
+      "icon": "\ud83e\udd1d",
+      "name": "friends",
+      "type": "relationship",
+      "weight": 20
+    }
+  ],
+  "school_name": "School",
+  "school_year": "2025\u201326"
+}

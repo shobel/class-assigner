@@ -1,0 +1,36 @@
+name,grade,gender,math,reading,behavior,independence,iep,504,esl,gate,friends,incompatible
+Emma Johnson,Kindergarten,F,m,m,cooperative,high,n,n,n,n,"Liam Smith,Olivia Brown",
+Liam Smith,Kindergarten,M,h,m,neutral,high,n,n,n,n,Emma Johnson,Noah Davis
+Olivia Brown,Kindergarten,F,l,m,cooperative,neutral,n,n,n,n,Emma Johnson,
+Noah Davis,Kindergarten,M,m,h,disruptive,low,n,n,n,n,,Liam Smith
+Sophie Chen,Kindergarten,F,h,h,cooperative,high,y,n,n,y,"Emma Johnson,Olivia Brown",
+Ava Wilson,1st,F,h,h,cooperative,high,n,n,n,y,"Sophia Garcia,Mia Taylor",
+Ethan Martinez,1st,M,m,m,neutral,neutral,n,n,n,n,Mason Rodriguez,
+Sophia Garcia,1st,F,m,h,cooperative,low,n,y,n,n,Ava Wilson,Mason Rodriguez
+Mason Rodriguez,1st,M,l,m,disruptive,low,n,n,n,n,Ethan Martinez,Sophia Garcia
+Mia Taylor,1st,F,h,m,cooperative,high,n,n,n,n,Ava Wilson,
+Lucas Anderson,1st,M,m,h,neutral,neutral,n,n,n,n,,
+Isabella Lopez,2nd,F,h,m,cooperative,high,n,n,n,n,"Mia Hernandez,Charlotte Kim",
+William Gonzalez,2nd,M,m,m,neutral,neutral,n,n,n,n,James Moore,
+Mia Hernandez,2nd,F,m,h,cooperative,high,n,n,n,n,Isabella Lopez,
+James Moore,2nd,M,h,l,neutral,neutral,n,n,n,n,William Gonzalez,
+Charlotte Kim,2nd,F,l,m,cooperative,low,n,y,n,n,Isabella Lopez,
+Oliver Thompson,2nd,M,m,m,disruptive,low,n,n,n,n,,Charlotte Kim
+Charlotte Taylor,3rd,F,m,m,cooperative,high,n,n,n,n,"Amelia Thomas,Harper Lee",
+Benjamin Anderson,3rd,M,h,h,neutral,high,n,n,n,y,Lucas Jackson,
+Amelia Thomas,3rd,F,l,m,cooperative,low,n,y,n,n,Charlotte Taylor,
+Lucas Jackson,3rd,M,m,m,neutral,neutral,n,n,n,n,Benjamin Anderson,
+Harper Lee,3rd,F,h,h,cooperative,high,n,n,n,y,Charlotte Taylor,
+Noah Williams,3rd,M,m,l,disruptive,low,n,n,n,n,,Harper Lee
+Harper White,4th,F,h,h,cooperative,high,n,n,n,y,"Evelyn Martin,Lily Zhang",
+Henry Harris,4th,M,m,m,neutral,neutral,n,n,n,n,Alexander Thompson,
+Evelyn Martin,4th,F,m,l,cooperative,neutral,n,n,n,n,Harper White,
+Alexander Thompson,4th,M,l,m,disruptive,low,n,n,n,n,Henry Harris,
+Lily Zhang,4th,F,h,m,cooperative,high,y,n,y,n,Harper White,
+Jackson Brown,4th,M,m,h,neutral,high,n,n,n,n,,Alexander Thompson
+Abigail Garcia,5th,F,h,m,cooperative,high,n,n,n,y,"Emily Robinson,Sofia Martinez",
+Michael Martinez,5th,M,m,h,neutral,neutral,n,n,n,n,Daniel Clark,
+Emily Robinson,5th,F,m,m,cooperative,low,n,y,n,n,Abigail Garcia,
+Daniel Clark,5th,M,h,l,neutral,high,n,n,n,n,Michael Martinez,
+Sofia Martinez,5th,F,l,h,cooperative,neutral,n,n,y,n,Abigail Garcia,
+Ethan Davis,5th,M,m,m,disruptive,low,n,n,n,n,,Sofia Martinez

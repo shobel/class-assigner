@@ -1,0 +1,286 @@
+/* Assignment Progress & Animations */
+
+/* Progress Modal */
+.progress-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.7);
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2000;
+    opacity: 0;
+    transition: opacity 300ms ease;
+}
+
+.progress-modal.show {
+    opacity: 1;
+}
+
+.progress-modal-content {
+    background: white;
+    border-radius: var(--radius-xl);
+    padding: 40px;
+    max-width: 500px;
+    width: 90%;
+    box-shadow: 0 25px 50px rgba(0, 0, 0, 0.3);
+    transform: scale(0.9);
+    transition: transform 300ms cubic-bezier(0.68, -0.55, 0.27, 1.55);
+}
+
+.progress-modal.show .progress-modal-content {
+    transform: scale(1);
+}
+
+.progress-header h3 {
+    font-size: 24px;
+    text-align: center;
+    margin-bottom: 32px;
+    color: var(--slate-900);
+}
+
+.progress-body {
+    margin-bottom: 24px;
+}
+
+.progress-phase {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.phase-icon {
+    font-size: 28px;
+    animation: pulse 2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+.phase-label {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--slate-900);
+}
+
+.progress-bar-container {
+    height: 8px;
+    background: var(--slate-200);
+    border-radius: 100px;
+    overflow: hidden;
+    margin-bottom: 12px;
+}
+
+.progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, var(--primary-500), var(--primary-600));
+    border-radius: 100px;
+    transition: width 200ms ease-out;
+    box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+}
+
+.progress-percent {
+    text-align: center;
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--primary-600);
+    margin-bottom: 16px;
+}
+
+.progress-details {
+    min-height: 60px;
+}
+
+.detail-item {
+    font-size: 13px;
+    color: var(--slate-600);
+    padding: 4px 0;
+    animation: fadeInUp 300ms ease-out;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.progress-meta {
+    text-align: center;
+    font-size: 13px;
+    color: var(--slate-500);
+    padding-top: 16px;
+    border-top: 1px solid var(--slate-200);
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+}
+
+/* Success State */
+.success-icon-wrapper {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 24px;
+}
+
+.success-icon {
+    font-size: 80px;
+    transform: scale(0);
+}
+
+.success-icon.bounce {
+    animation: bounceIn 600ms cubic-bezier(0.68, -0.55, 0.27, 1.55);
+}
+
+@keyframes bounceIn {
+    0% {
+        transform: scale(0);
+    }
+    50% {
+        transform: scale(1.2);
+    }
+    100% {
+        transform: scale(1);
+    }
+}
+
+.success-title {
+    font-size: 32px;
+    text-align: center;
+    margin-bottom: 8px;
+    background: linear-gradient(135deg, var(--primary-500), var(--primary-600));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.success-subtitle {
+    text-align: center;
+    font-size: 18px;
+    color: var(--slate-600);
+    margin-bottom: 32px;
+}
+
+.success-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+.success-stat {
+    text-align: center;
+    padding: 16px;
+    background: var(--slate-50);
+    border-radius: var(--radius-lg);
+}
+
+.stat-icon {
+    font-size: 32px;
+    margin-bottom: 8px;
+}
+
+.success-stat .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--primary-600);
+    margin-bottom: 4px;
+}
+
+.success-stat .stat-label {
+    font-size: 11px;
+    color: var(--slate-500);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+}
+
+.success-modal-content button {
+    width: 100%;
+}
+
+/* Confetti */
+.confetti {
+    position: fixed;
+    width: 10px;
+    height: 10px;
+    top: -10px;
+    border-radius: 2px;
+    animation: confettiFall linear forwards;
+    z-index: 3000;
+}
+
+@keyframes confettiFall {
+    to {
+        transform: translateY(100vh) rotate(720deg);
+        opacity: 0;
+    }
+}
+
+/* Result Animation Helpers */
+.stat-card {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.class-box {
+    opacity: 1;
+    transform: scale(1);
+}
+
+/* Student Drop Animation */
+.student-dot {
+    position: fixed;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    z-index: 2500;
+    transition: all 600ms cubic-bezier(0.68, -0.55, 0.27, 1.55);
+    transform: scale(0.5);
+    pointer-events: none;
+}
+
+/* Class Loading State */
+.class-loading {
+    padding: 24px;
+    text-align: center;
+    background: var(--slate-50);
+    border-radius: var(--radius-lg);
+    margin: 16px;
+}
+
+.loading-dots {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+}
+
+.dot-counter {
+    font-size: 32px;
+    font-weight: 700;
+    color: var(--primary-600);
+    min-width: 50px;
+    animation: pulse 1s ease-in-out infinite;
+}
+
+.loading-text {
+    font-size: 14px;
+    color: var(--slate-500);
+    font-weight: 500;
+}
+
+/* Pulse for counters */
+@keyframes counterPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+}

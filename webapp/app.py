@@ -1,0 +1,924 @@
+"""
+Class Assignment Optimizer - Web App
+Flask backend for the assignment tool
+"""
+
+from flask import Flask, render_template, request, jsonify, send_file
+import json
+import os
+import sys
+import pandas as pd
+from pathlib import Path
+from datetime import datetime
+
+# Add parent directory to path to import solver
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from class_solver_v2 import solve_classes, load_students
+
+app = Flask(__name__)
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+
+DATA_DIR = Path(__file__).parent / "data"
+DATA_DIR.mkdir(exist_ok=True)
+
+SCHOOL_YEARS_DIR = DATA_DIR / "school_years"
+SCHOOL_YEARS_DIR.mkdir(exist_ok=True)
+
+CONFIG_FILE = DATA_DIR / "config.json"
+
+# Legacy files for migration
+STUDENTS_FILE = DATA_DIR / "students.json"
+ASSIGNMENTS_FILE = DATA_DIR / "assignments.json"
+
+
+# ============================================================================
+# Utility Functions
+# ============================================================================
+
+def get_school_year():
+    """Calculate current school year (e.g., 2025–26 if it's after July 2025)"""
+    now = datetime.now()
+    year = now.year
+    # School year starts in August/September, so if we're past July, it's the next school year
+    if now.month >= 7:
+        return f"{year}–{str(year + 1)[-2:]}"
+    else:
+        return f"{year - 1}–{str(year)[-2:]}"
+
+
+def get_school_year_file(school_year):
+    """Get the file path for a school year's data"""
+    # Sanitize the year string for filename (replace – with -)
+    safe_year = school_year.replace('–', '-')
+    return SCHOOL_YEARS_DIR / f"{safe_year}.json"
+
+
+def list_school_years():
+    """List all available school years"""
+    years = []
+    for file in SCHOOL_YEARS_DIR.glob("*.json"):
+        year_str = file.stem.replace('-', '–')
+        years.append(year_str)
+    return sorted(years)
+
+
+def load_school_year_data(school_year):
+    """Load data for a specific school year"""
+    file_path = get_school_year_file(school_year)
+    if file_path.exists():
+        with open(file_path, 'r') as f:
+            return json.load(f)
+    return {}
+
+
+def save_school_year_data(school_year, data):
+    """Save data for a specific school year"""
+    file_path = get_school_year_file(school_year)
+    with open(file_path, 'w') as f:
+        json.dump(data, f, indent=2)
+
+
+def migrate_legacy_data(current_year):
+    """Migrate old students.json to new school year structure"""
+    if STUDENTS_FILE.exists():
+        # Load old data
+        old_data = load_students_data()
+
+        # Save to current year
+        save_school_year_data(current_year, old_data)
+
+        # Rename old file to backup
+        STUDENTS_FILE.rename(DATA_DIR / "students.json.backup")
+        print(f"Migrated legacy data to {current_year}")
+
+
+def create_next_school_year(current_year):
+    """
+    Create next school year by promoting all students up one grade.
+    Returns the new school year name.
+    """
+    # Parse current year (e.g., "2025–26" -> 2025, 2026)
+    start_year = int(current_year.split('–')[0])
+    next_year = f"{start_year + 1}–{str(start_year + 2)[-2:]}"
+
+    # Load current year data
+    current_data = load_school_year_data(current_year)
+
+    # Grade promotion map (K->1st, 1st->2nd, etc.)
+    grade_map = {
+        'Kindergarten': '1st Grade',
+        '1st Grade': '2nd Grade',
+        '2nd Grade': '3rd Grade',
+        '3rd Grade': '4th Grade',
+        '4th Grade': '5th Grade',
+        '5th Grade': '6th Grade',
+        '6th Grade': '7th Grade',
+        '7th Grade': '8th Grade',
+        # 8th grade graduates (not promoted)
+    }
+
+    # Create new year structure
+    next_data = {}
+
+    for grade_name, grade_data in current_data.items():
+        # Promote to next grade
+        next_grade = grade_map.get(grade_name)
+        if next_grade:
+            # Copy students and clear assignments
+            next_data[next_grade] = {
+                'students': grade_data.get('students', []),
+                'num_classes': grade_data.get('num_classes', 5),
+                'assignments': []  # Clear assignments for new year
+            }
+
+    # Create empty Kindergarten for new students
+    next_data['Kindergarten'] = {
+        'students': [],
+        'num_classes': 3,
+        'assignments': []
+    }
+
+    # Save new year
+    save_school_year_data(next_year, next_data)
+
+    return next_year
+
+
+# ============================================================================
+# Default Configuration
+# ============================================================================
+
+DEFAULT_CONFIG = {
+    "properties": [
+        {
+            "name": "gender",
+            "display_name": "Gender",
+            "type": "categorical",
+            "values": ["g", "b"],
+            "weight": 40,
+            "enabled": True,
+            "icon": "♀️♂️"
+        },
+        {
+            "name": "behavior",
+            "display_name": "Behavior",
+            "type": "categorical",
+            "values": ["cooperative", "neutral", "disruptive"],
+            "weight": 100,
+            "enabled": True,
+            "icon": "⚠️"
+        },
+        {
+            "name": "independence",
+            "display_name": "Independence",
+            "type": "categorical",
+            "values": ["high", "neutral", "low"],
+            "weight": 60,
+            "enabled": True,
+            "icon": "🎯"
+        },
+        {
+            "name": "iep",
+            "display_name": "IEP",
+            "type": "boolean",
+            "weight": 100,
+            "enabled": True,
+            "icon": "📋"
+        },
+        {
+            "name": "504",
+            "display_name": "504 Plan",
+            "type": "boolean",
+            "weight": 100,
+            "enabled": True,
+            "icon": "📄"
+        },
+        {
+            "name": "esl",
+            "display_name": "ESL",
+            "type": "boolean",
+            "weight": 80,
+            "enabled": True,
+            "icon": "🌐"
+        },
+        {
+            "name": "gate",
+            "display_name": "GATE",
+            "type": "boolean",
+            "weight": 60,
+            "enabled": True,
+            "icon": "⭐"
+        },
+        {
+            "name": "math",
+            "display_name": "Math Level",
+            "type": "categorical",
+            "values": ["h", "m", "l"],
+            "weight": 60,
+            "enabled": True,
+            "icon": "📐"
+        },
+        {
+            "name": "reading",
+            "display_name": "Reading Level",
+            "type": "categorical",
+            "values": ["h", "m", "l"],
+            "weight": 60,
+            "enabled": True,
+            "icon": "📚"
+        },
+        {
+            "name": "friends",
+            "display_name": "Friendships",
+            "type": "relationship",
+            "weight": 30,
+            "enabled": True,
+            "icon": "🤝"
+        }
+    ],
+    "friend_weight": 30,  # Kept for backward compatibility
+    "school_name": "School",
+    "school_year": None,  # Will be auto-calculated
+    "active_school_year": None,  # Currently selected year for viewing
+    "available_school_years": []  # List of all years with data
+}
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
+
+def load_config():
+    """Load configuration or return default"""
+    if CONFIG_FILE.exists():
+        with open(CONFIG_FILE, 'r') as f:
+            config = json.load(f)
+    else:
+        config = DEFAULT_CONFIG.copy()
+
+    # Migrate old config structure to new one
+    if 'properties' in config:
+        # Check if we need to migrate from old property structure
+        old_property_names = {p['name'] for p in config['properties']}
+        if 'problematic' in old_property_names or 'special_needs' in old_property_names:
+            # Replace with new structure
+            config['properties'] = DEFAULT_CONFIG['properties'].copy()
+            # Save the migrated config
+            save_config(config)
+
+    # Ensure all properties have 'enabled' field
+    for prop in config.get('properties', []):
+        if 'enabled' not in prop:
+            prop['enabled'] = True
+
+    # Ensure friends property exists (migration)
+    if 'properties' in config:
+        existing_names = {p['name'] for p in config['properties']}
+        if 'friends' not in existing_names:
+            # Add friends property from default config
+            friends_prop = next((p for p in DEFAULT_CONFIG['properties'] if p['name'] == 'friends'), None)
+            if friends_prop:
+                config['properties'].append(friends_prop.copy())
+                save_config(config)  # Save the migration
+
+    # Auto-fill school year if not set
+    if not config.get('school_year'):
+        config['school_year'] = get_school_year()
+
+    # Ensure school_name exists
+    if not config.get('school_name'):
+        config['school_name'] = 'School'
+
+    # Update available school years
+    config['available_school_years'] = list_school_years()
+
+    # Set active school year to current if not set
+    if not config.get('active_school_year'):
+        config['active_school_year'] = config['school_year']
+
+    # Migrate legacy data if exists
+    migrate_legacy_data(config['school_year'])
+
+    return config
+
+
+def save_config(config):
+    """Save configuration"""
+    with open(CONFIG_FILE, 'w') as f:
+        json.dump(config, f, indent=2)
+
+
+def load_students_data():
+    """Load all student data"""
+    if STUDENTS_FILE.exists():
+        with open(STUDENTS_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+
+def save_students_data(data):
+    """Save student data"""
+    with open(STUDENTS_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
+
+
+def load_assignments_data():
+    """Load assignments"""
+    if ASSIGNMENTS_FILE.exists():
+        with open(ASSIGNMENTS_FILE, 'r') as f:
+            return json.load(f)
+    return {}
+
+
+def save_assignments_data(data):
+    """Save assignments"""
+    with open(ASSIGNMENTS_FILE, 'w') as f:
+        json.dump(data, f, indent=2)
+
+
+# ============================================================================
+# Routes
+# ============================================================================
+
+@app.route('/')
+def index():
+    """Main page"""
+    return render_template('homeroom.html')
+
+@app.route('/old')
+def old_index():
+    """Old interface"""
+    return render_template('index.html')
+
+
+@app.route('/api/onboarding/status', methods=['GET'])
+def api_onboarding_status():
+    """Check if onboarding is needed"""
+    years = list_school_years()
+    needs_onboarding = len(years) == 0
+
+    return jsonify({
+        'needs_onboarding': needs_onboarding,
+        'suggested_year': get_school_year()
+    })
+
+
+@app.route('/api/onboarding/import-roster', methods=['POST'])
+def api_onboarding_import():
+    """Import entire school roster with grades"""
+    data = request.json
+    school_year = data.get('school_year')
+    roster_data = data.get('roster')  # { 'Kindergarten': [...students], '1st Grade': [...students], ... }
+
+    if not school_year or not roster_data:
+        return jsonify({'error': 'Missing school_year or roster data'}), 400
+
+    # Save the roster data for this school year
+    year_data = {}
+    for grade_name, students in roster_data.items():
+        num_students = len(students)
+        num_classes = 5 if grade_name != 'Kindergarten' else 3
+
+        # Calculate reasonable defaults based on actual student count
+        avg_per_class = num_students / num_classes if num_classes > 0 else 20
+        min_students = max(1, int(avg_per_class * 0.8))  # 80% of average
+        max_students = int(avg_per_class * 1.2) + 2      # 120% of average + buffer
+
+        year_data[grade_name] = {
+            'students': students,
+            'num_classes': num_classes,
+            'min_students': min_students,
+            'max_students': max_students,
+            'assignments': []
+        }
+
+    save_school_year_data(school_year, year_data)
+
+    # Update config
+    config = load_config()
+    config['school_year'] = school_year
+    config['active_school_year'] = school_year
+    config['available_school_years'] = list_school_years()
+    save_config(config)
+
+    return jsonify({'status': 'success', 'school_year': school_year})
+
+
+@app.route('/api/school-years', methods=['GET'])
+def api_school_years():
+    """Get all available school years"""
+    years = list_school_years()
+    config = load_config()
+    return jsonify({
+        'years': years,
+        'current': config['school_year'],
+        'active': config['active_school_year']
+    })
+
+
+@app.route('/api/school-years/<school_year>', methods=['POST'])
+def api_set_active_year(school_year):
+    """Set the active school year for viewing"""
+    config = load_config()
+    config['active_school_year'] = school_year
+    save_config(config)
+    return jsonify({'status': 'success', 'active_school_year': school_year})
+
+
+@app.route('/api/school-years/<school_year>/clear', methods=['POST'])
+def api_clear_school_year(school_year):
+    """Clear all data for a school year"""
+    # Delete the school year file entirely
+    file_path = get_school_year_file(school_year)
+    if file_path.exists():
+        file_path.unlink()
+
+    # Update config
+    config = load_config()
+    config['available_school_years'] = list_school_years()
+
+    # If there are no more years, clear the active year
+    if len(config['available_school_years']) == 0:
+        config['active_school_year'] = None
+
+    save_config(config)
+
+    return jsonify({'status': 'success'})
+
+
+@app.route('/api/school-years/create-next', methods=['POST'])
+def api_create_next_year():
+    """Create next school year by promoting all students"""
+    config = load_config()
+    current_year = config['active_school_year']
+    next_year = create_next_school_year(current_year)
+
+    # Update config
+    config['available_school_years'] = list_school_years()
+    config['active_school_year'] = next_year
+    save_config(config)
+
+    return jsonify({
+        'status': 'success',
+        'new_year': next_year,
+        'message': f'Created {next_year} with promoted students'
+    })
+
+
+@app.route('/api/school-years/create-next-manual', methods=['POST'])
+def api_create_next_year_manual():
+    """Create next school year with manually adjusted student data"""
+    data = request.json
+    next_year = data['year']
+    year_data = data['data']
+
+    # Save new year
+    save_school_year_data(next_year, year_data)
+
+    # Update config
+    config = load_config()
+    config['available_school_years'] = list_school_years()
+    config['active_school_year'] = next_year
+    save_config(config)
+
+    return jsonify({
+        'status': 'success',
+        'new_year': next_year,
+        'message': f'Created {next_year} with {sum(len(g.get("students", [])) for g in year_data.values())} students'
+    })
+
+
+@app.route('/api/grades', methods=['GET'])
+def api_grades():
+    """Get all grades for active school year"""
+    config = load_config()
+    active_year = config.get('active_school_year', config['school_year'])
+    students_data = load_school_year_data(active_year)
+
+    grades = []
+    for grade_name, grade_data in students_data.items():
+        students = grade_data.get('students', [])
+        has_assignments = len(grade_data.get('assignments', [])) > 0
+        grades.append({
+            'id': grade_name.lower().replace(' ', '_'),
+            'name': grade_name,
+            'students': len(students),
+            'classes': grade_data.get('num_classes', 5),
+            'status': 'assigned' if has_assignments else ('imported' if students else 'empty')
+        })
+    return jsonify(grades)
+
+@app.route('/api/grades/<grade_id>/students', methods=['GET', 'POST'])
+def api_grade_students(grade_id):
+    """Get or update students for a grade"""
+    config = load_config()
+    active_year = config.get('active_school_year', config['school_year'])
+    students_data = load_school_year_data(active_year)
+
+    # Find grade by converting ID back to name
+    grade_name = None
+    for name in students_data.keys():
+        if name.lower().replace(' ', '_') == grade_id:
+            grade_name = name
+            break
+
+    if not grade_name:
+        return jsonify({'error': 'Grade not found'}), 404
+
+    if request.method == 'POST':
+        # Update students
+        data = request.json
+        if 'students' in data:
+            students_data[grade_name]['students'] = data['students']
+            save_school_year_data(active_year, students_data)
+            return jsonify({'status': 'success'})
+        return jsonify({'error': 'No students data provided'}), 400
+
+    # GET request
+    grade_data = students_data[grade_name]
+    return jsonify({
+        'students': grade_data.get('students', []),
+        'num_classes': grade_data.get('num_classes', 5),
+        'min_students': grade_data.get('min_students', 18),
+        'max_students': grade_data.get('max_students', 26),
+        'enforce_class_size': grade_data.get('enforce_class_size', False)  # Default to soft constraint
+    })
+
+@app.route('/api/grades/<grade_id>/assignments', methods=['GET', 'POST'])
+def api_grade_assignments(grade_id):
+    """Get or update assignments for a grade"""
+    config = load_config()
+    active_year = config.get('active_school_year', config['school_year'])
+    students_data = load_school_year_data(active_year)
+
+    grade_name = None
+    for name in students_data.keys():
+        if name.lower().replace(' ', '_') == grade_id:
+            grade_name = name
+            break
+
+    if not grade_name:
+        return jsonify({'error': 'Grade not found'}), 404
+
+    if request.method == 'POST':
+        # Update assignments (from drag/drop)
+        data = request.json
+        if 'assignments' in data:
+            students_data[grade_name]['assignments'] = data['assignments']
+            save_school_year_data(active_year, students_data)
+            return jsonify({'status': 'success'})
+        return jsonify({'error': 'No assignments data provided'}), 400
+
+    # GET request
+    grade_data = students_data[grade_name]
+    return jsonify({
+        'assignments': grade_data.get('assignments', []),
+        'solver_baseline': grade_data.get('solver_baseline', []),
+        'num_classes': grade_data.get('num_classes', 5)
+    })
+
+
+@app.route('/api/grades/<grade_id>/assignments/revert', methods=['POST'])
+def api_revert_assignments(grade_id):
+    """Revert assignments to solver baseline"""
+    config = load_config()
+    active_year = config.get('active_school_year', config['school_year'])
+    students_data = load_school_year_data(active_year)
+
+    grade_name = None
+    for name in students_data.keys():
+        if name.lower().replace(' ', '_') == grade_id:
+            grade_name = name
+            break
+
+    if not grade_name:
+        return jsonify({'error': 'Grade not found'}), 404
+
+    grade_data = students_data[grade_name]
+    solver_baseline = grade_data.get('solver_baseline', [])
+
+    if not solver_baseline:
+        return jsonify({'error': 'No solver baseline found'}), 404
+
+    # Revert to baseline
+    students_data[grade_name]['assignments'] = solver_baseline.copy()
+    save_school_year_data(active_year, students_data)
+
+    return jsonify({'status': 'success', 'assignments': solver_baseline})
+
+
+@app.route('/api/grades/<grade_id>/settings', methods=['POST'])
+def api_update_grade_settings(grade_id):
+    """Update grade settings (num_classes, min/max students)"""
+    config = load_config()
+    active_year = config.get('active_school_year', config['school_year'])
+    students_data = load_school_year_data(active_year)
+
+    # Find grade
+    grade_name = None
+    for name in students_data.keys():
+        if name.lower().replace(' ', '_') == grade_id:
+            grade_name = name
+            break
+
+    if not grade_name:
+        return jsonify({'error': 'Grade not found'}), 404
+
+    # Update settings
+    data = request.json
+    if 'num_classes' in data:
+        students_data[grade_name]['num_classes'] = data['num_classes']
+    if 'min_students' in data:
+        students_data[grade_name]['min_students'] = data['min_students']
+    if 'max_students' in data:
+        students_data[grade_name]['max_students'] = data['max_students']
+    if 'enforce_class_size' in data:
+        students_data[grade_name]['enforce_class_size'] = data['enforce_class_size']
+
+    save_school_year_data(active_year, students_data)
+    return jsonify({'status': 'success'})
+
+
+@app.route('/api/config', methods=['GET', 'POST'])
+def api_config():
+    """Get or update configuration"""
+    if request.method == 'GET':
+        return jsonify(load_config())
+
+    elif request.method == 'POST':
+        config = request.json
+        save_config(config)
+        return jsonify({"status": "success"})
+
+
+@app.route('/api/students', methods=['GET'])
+def api_students():
+    """Get all students"""
+    return jsonify(load_students_data())
+
+
+@app.route('/api/students/<grade>', methods=['GET', 'POST', 'DELETE'])
+def api_students_grade(grade):
+    """Get, update, or delete students for a specific grade"""
+    data = load_students_data()
+
+    if request.method == 'GET':
+        return jsonify(data.get(grade, {
+            "students": [],
+            "num_classes": 5
+        }))
+
+    elif request.method == 'POST':
+        data[grade] = request.json
+        save_students_data(data)
+        return jsonify({"status": "success"})
+
+    elif request.method == 'DELETE':
+        if grade in data:
+            del data[grade]
+            save_students_data(data)
+        return jsonify({"status": "success"})
+
+
+@app.route('/api/import/preview', methods=['POST'])
+def api_import_preview():
+    """Preview CSV and suggest column mappings"""
+    if 'file' not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+
+    try:
+        # Read CSV
+        df = pd.read_csv(file)
+
+        # Get column names
+        columns = df.columns.tolist()
+
+        # Preview first 5 rows
+        preview = df.head(5).to_dict('records')
+
+        # Auto-detect mappings
+        config = load_config()
+        property_names = [p['name'] for p in config['properties']]
+
+        mappings = auto_detect_columns(columns, property_names)
+
+        return jsonify({
+            "columns": columns,
+            "preview": preview,
+            "suggested_mappings": mappings,
+            "row_count": len(df)
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/import/confirm', methods=['POST'])
+def api_import_confirm():
+    """Import CSV with confirmed mappings"""
+    data = request.json
+    grade = data.get('grade')
+    mappings = data.get('mappings')
+    csv_data = data.get('csv_data')
+    num_classes = data.get('num_classes', 5)
+
+    try:
+        # Convert CSV data to student objects
+        students = []
+        for row in csv_data:
+            student = {
+                "name": row.get(mappings.get('name', 'name'), ''),
+            }
+
+            # Map each property
+            config = load_config()
+            for prop in config['properties']:
+                prop_name = prop['name']
+                csv_col = mappings.get(prop_name)
+                if csv_col and csv_col in row:
+                    student[prop_name] = str(row[csv_col]).lower()
+                else:
+                    # Default value
+                    student[prop_name] = prop['values'][0] if prop['values'] else ''
+
+            # Friends and incompatibles
+            friends_col = mappings.get('friends')
+            if friends_col and friends_col in row and row[friends_col]:
+                student['friends'] = str(row[friends_col])
+            else:
+                student['friends'] = ''
+
+            incomp_col = mappings.get('incompatible')
+            if incomp_col and incomp_col in row and row[incomp_col]:
+                student['incompatible'] = str(row[incomp_col])
+            else:
+                student['incompatible'] = ''
+
+            students.append(student)
+
+        # Save to students data
+        all_students = load_students_data()
+        all_students[grade] = {
+            "students": students,
+            "num_classes": num_classes
+        }
+        save_students_data(all_students)
+
+        return jsonify({
+            "status": "success",
+            "count": len(students)
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+
+
+@app.route('/api/assign/<grade_id>', methods=['POST'])
+def api_assign(grade_id):
+    """Run the assignment solver for a grade"""
+    try:
+        # Get students for this grade using new storage
+        config = load_config()
+        active_year = config.get('active_school_year', config['school_year'])
+        students_data = load_school_year_data(active_year)
+
+        # Find grade name from ID
+        grade_name = None
+        for name in students_data.keys():
+            if name.lower().replace(' ', '_') == grade_id:
+                grade_name = name
+                break
+
+        if not grade_name:
+            return jsonify({"error": "Grade not found"}), 404
+
+        grade_data = students_data[grade_name]
+        students = grade_data.get('students', [])
+        num_classes = grade_data.get('num_classes', 5)
+        min_students = grade_data.get('min_students', 18)
+        max_students = grade_data.get('max_students', 26)
+        enforce_class_size = grade_data.get('enforce_class_size', False)
+
+        if len(students) == 0:
+            return jsonify({"error": "No students to assign"}), 400
+
+        # Get properties config
+        properties_config = config.get('properties', [])
+
+        # Convert to CSV format for solver
+        # Use absolute paths to avoid issues with directory changes
+        temp_input = (DATA_DIR / f"temp_{grade_id}_input.csv").resolve()
+        temp_output = (DATA_DIR / f"temp_{grade_id}_output.csv").resolve()
+
+        df = pd.DataFrame(students)
+        df.to_csv(temp_input, index=False)
+
+        # Change to parent directory where solver is located
+        import os
+        original_dir = os.getcwd()
+        os.chdir(Path(__file__).parent.parent)
+
+        try:
+            # Run solver with custom parameters - use absolute paths
+            print(f"Running solver with input: {temp_input}, output: {temp_output}")
+            solve_classes(
+                str(temp_input),
+                str(temp_output),
+                num_classes=num_classes,
+                min_students=min_students,
+                max_students=max_students,
+                enforce_class_size=enforce_class_size,
+                properties_config=properties_config
+            )
+            print(f"Solver completed")
+        except Exception as solver_error:
+            os.chdir(original_dir)
+            raise Exception(f"Solver failed: {solver_error}")
+        finally:
+            os.chdir(original_dir)
+
+        # Check if output file was created
+        if not temp_output.exists():
+            raise Exception(f"Solver did not create output file: {temp_output}")
+
+        # Read results
+        results_df = pd.read_csv(temp_output)
+        assignments = results_df.to_dict('records')
+
+        # Save assignments back to school year data
+        # Store both solver baseline and current assignments
+        students_data[grade_name]['assignments'] = assignments
+        students_data[grade_name]['solver_baseline'] = assignments.copy()  # Store solver results separately
+        save_school_year_data(active_year, students_data)
+
+        # Clean up temp files
+        temp_input.unlink()
+        temp_output.unlink()
+
+        return jsonify({
+            "status": "success",
+            "assignments": assignments,
+            "num_classes": num_classes,
+            "student_count": len(students)
+        })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/assignments/<grade>', methods=['GET'])
+def api_assignments_grade(grade):
+    """Get assignments for a grade"""
+    all_assignments = load_assignments_data()
+    return jsonify(all_assignments.get(grade, []))
+
+
+def auto_detect_columns(csv_columns, property_names):
+    """Auto-detect column mappings"""
+    mappings = {}
+
+    # Convert to lowercase for matching
+    csv_lower = {col.lower(): col for col in csv_columns}
+
+    # Name detection
+    for pattern in ['name', 'student', 'student_name', 'first_name', 'firstname']:
+        if pattern in csv_lower:
+            mappings['name'] = csv_lower[pattern]
+            break
+
+    # Property detection
+    for prop in property_names:
+        if prop in csv_lower:
+            mappings[prop] = csv_lower[prop]
+        elif prop + '_level' in csv_lower:
+            mappings[prop] = csv_lower[prop + '_level']
+
+    # Friends
+    for pattern in ['friends', 'friend', 'friend_list']:
+        if pattern in csv_lower:
+            mappings['friends'] = csv_lower[pattern]
+            break
+
+    # Incompatible
+    for pattern in ['incompatible', 'cannot_be_with', 'separate']:
+        if pattern in csv_lower:
+            mappings['incompatible'] = csv_lower[pattern]
+            break
+
+    return mappings
+
+
+if __name__ == '__main__':
+    print("\n" + "="*60)
+    print("Class Assignment Optimizer - Web App")
+    print("="*60)
+    print("\nStarting server on http://localhost:5001")
+    print("\nPress Ctrl+C to stop\n")
+
+    app.run(debug=True, port=5001)

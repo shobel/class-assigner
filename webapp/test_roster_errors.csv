@@ -1,0 +1,16 @@
+name,grade,gender,math,reading,behavior,independence,iep,504,esl,gate,friends,incompatible
+Emma Johnson,Kindergarten,F,m,m,cooperative,high,n,n,n,n,"Liam Smith",
+Liam Smith,K,M,h,,neutral,,n,n,n,n,Emma Johnson,
+,1st,F,m,h,cooperative,low,n,n,n,n,,
+Noah Davis,InvalidGrade,M,m,h,disruptive,low,n,n,n,n,,Emma Johnson
+Sophie Chen,Kindergarten,F,high,medium,friendly,very high,yes,no,no,yes,"Emma Johnson",
+Ava Wilson,1st,Female,high,high,cooperative,high,false,false,false,true,,
+Ethan Martinez,1,M,medium,medium,neutral,neutral,0,0,0,0,,
+Sophia Garcia,first grade,F,m,h,,,n,y,n,n,Ava Wilson,
+Mason Rodriguez,1st,M,l,m,bad,low,n,n,n,n,,Sophia Garcia
+Mia Taylor,1st,G,h,m,cooperative,high,n,n,n,n,Ava Wilson,
+Lucas Anderson,2nd,M,m,h,neutral,neutral,n,n,n,n,,
+Isabella Lopez,2nd,F,h,m,cooperative,high,n,n,n,n,"Mia Hernandez",
+William Gonzalez,2nd,M,m,m,neutral,neutral,n,n,n,n,James Moore,
+Mia Hernandez,2nd,F,m,h,cooperative,high,n,n,n,n,Isabella Lopez,
+James Moore,2,Boy,h,l,neutral,neutral,n,n,n,n,William Gonzalez,
