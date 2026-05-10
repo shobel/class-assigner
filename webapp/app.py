@@ -8,6 +8,8 @@ import json
 import math
 import os
 import sys
+import io
+import zipfile
 import socket
 import platform
 import pandas as pd
@@ -775,6 +777,58 @@ def api_update_grade_settings(grade_id):
 
     save_school_year_data(active_year, students_data)
     return jsonify({'status': 'success'})
+
+
+@app.route('/api/export-data', methods=['GET'])
+def api_export_data():
+    """Export all school data as a .classify zip file"""
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        if CONFIG_FILE.exists():
+            zf.write(CONFIG_FILE, 'config.json')
+        if SCHOOL_YEARS_DIR.exists():
+            for f in SCHOOL_YEARS_DIR.glob('*.json'):
+                zf.write(f, f'school_years/{f.name}')
+    buf.seek(0)
+    timestamp = datetime.now().strftime('%Y%m%d')
+    return send_file(
+        buf,
+        mimetype='application/zip',
+        as_attachment=True,
+        download_name=f'classify-backup-{timestamp}.classify'
+    )
+
+
+@app.route('/api/import-data', methods=['POST'])
+def api_import_data():
+    """Import a .classify backup file, restoring all school data"""
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file provided'}), 400
+    f = request.files['file']
+    if not f.filename.endswith('.classify'):
+        return jsonify({'error': 'Invalid file type'}), 400
+    try:
+        with zipfile.ZipFile(io.BytesIO(f.read())) as zf:
+            names = zf.namelist()
+            if 'config.json' in names:
+                # Preserve current activation status — don't overwrite it
+                current_config = {}
+                if CONFIG_FILE.exists():
+                    with open(CONFIG_FILE) as cf:
+                        current_config = json.load(cf)
+                imported = json.loads(zf.read('config.json'))
+                imported['activated'] = current_config.get('activated', False)
+                imported['activation_code'] = current_config.get('activation_code')
+                with open(CONFIG_FILE, 'w') as cf:
+                    json.dump(imported, cf, indent=2)
+            SCHOOL_YEARS_DIR.mkdir(exist_ok=True)
+            for name in names:
+                if name.startswith('school_years/') and name.endswith('.json'):
+                    dest = SCHOOL_YEARS_DIR / Path(name).name
+                    dest.write_bytes(zf.read(name))
+        return jsonify({'status': 'success'})
+    except Exception as e:
+        return jsonify({'error': f'Failed to import: {str(e)}'}), 400
 
 
 @app.route('/api/activation-status', methods=['GET'])

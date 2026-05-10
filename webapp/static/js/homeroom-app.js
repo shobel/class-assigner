@@ -157,9 +157,8 @@ async function submitActivationCode() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ code }),
       });
-      // Hide overlay and start app
-      document.getElementById('activation-overlay').classList.add('hidden');
-      await startApp();
+      // Offer restore from backup before starting
+      showRestoreOption();
     } else {
       errorEl.textContent = data.error || 'Invalid or already used code.';
       errorEl.style.display = 'block';
@@ -171,6 +170,57 @@ async function submitActivationCode() {
     errorEl.style.display = 'block';
     btn.textContent = 'Activate';
     btn.disabled = false;
+  }
+}
+
+function showRestoreOption() {
+  document.getElementById('activation-box').innerHTML = `
+    <div style="font-family:'Instrument Serif',serif;font-size:32px;font-style:italic;margin-bottom:6px">
+      <span style="color:var(--terra)">Class</span>ify
+    </div>
+    <div style="font-size:14px;font-weight:500;color:var(--ink);margin-bottom:6px">Activated!</div>
+    <div style="font-size:13px;color:var(--ink-3);margin-bottom:24px">
+      Are you transferring from another computer?
+    </div>
+    <label class="btn" style="display:block;width:100%;box-sizing:border-box;text-align:center;cursor:pointer;margin-bottom:10px;background:var(--terra);color:#fff;border-color:var(--terra)">
+      Restore from backup
+      <input type="file" accept=".classify" style="display:none" onchange="handleActivationImport(this)">
+    </label>
+    <button class="btn ghost" style="width:100%" onclick="document.getElementById('activation-overlay').classList.add('hidden');startApp()">
+      Start fresh
+    </button>
+    <div id="restore-status" style="display:none;margin-top:12px;font-size:12px;text-align:center"></div>
+  `;
+}
+
+async function handleActivationImport(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('restore-status');
+  statusEl.textContent = 'Restoring…';
+  statusEl.style.color = 'var(--ink-3)';
+  statusEl.style.display = 'block';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/api/import-data', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (res.ok) {
+      statusEl.textContent = 'Restored! Starting app…';
+      statusEl.style.color = 'var(--sage-ink)';
+      setTimeout(() => {
+        document.getElementById('activation-overlay').classList.add('hidden');
+        startApp();
+      }, 1000);
+    } else {
+      statusEl.textContent = data.error || 'Restore failed. Try again or start fresh.';
+      statusEl.style.color = 'var(--rose)';
+    }
+  } catch (err) {
+    statusEl.textContent = 'Restore failed. Check the file and try again.';
+    statusEl.style.color = 'var(--rose)';
   }
 }
 
@@ -606,6 +656,25 @@ function renderSchoolConfigScreen() {
             <p style="font-size:11px;color:var(--ink-3);line-height:1.5">
               Students at the highest grade are graduated out when creating a new school year.
             </p>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:16px">
+          <div class="panel-h">
+            <h3>Computer transfer</h3>
+          </div>
+          <div class="panel-b">
+            <p style="font-size:12px;color:var(--ink-3);line-height:1.6;margin-bottom:14px">
+              Moving to a new computer? Export a backup file and import it on the new machine after activation.
+            </p>
+            <div style="display:flex;gap:10px;align-items:center">
+              <button class="btn sm" onclick="exportAllData()">Export backup</button>
+              <label class="btn sm ghost" style="cursor:pointer">
+                Import backup
+                <input type="file" accept=".classify" style="display:none" onchange="importAllData(this)">
+              </label>
+            </div>
+            <div id="import-status" style="display:none;margin-top:10px;font-size:12px"></div>
           </div>
         </div>
       </div>
@@ -3342,6 +3411,47 @@ function exportCSV() {
 
   const csv = convertToCSV(window.currentStudents);
   downloadCSV(csv, `${currentGrade.name}_roster.csv`);
+}
+
+// ── Computer transfer ─────────────────────────────────────────────────────────
+
+function exportAllData() {
+  // Trigger download via a temporary link
+  const a = document.createElement('a');
+  a.href = '/api/export-data';
+  a.download = '';
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+async function importAllData(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const statusEl = document.getElementById('import-status');
+  statusEl.textContent = 'Importing…';
+  statusEl.style.color = 'var(--ink-3)';
+  statusEl.style.display = 'block';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/api/import-data', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (res.ok) {
+      statusEl.textContent = 'Imported successfully. Reloading…';
+      statusEl.style.color = 'var(--sage-ink)';
+      setTimeout(() => window.location.reload(), 1200);
+    } else {
+      statusEl.textContent = data.error || 'Import failed.';
+      statusEl.style.color = 'var(--rose)';
+    }
+  } catch (err) {
+    statusEl.textContent = 'Import failed. Make sure the file is a valid .classify backup.';
+    statusEl.style.color = 'var(--rose)';
+  }
+  input.value = '';
 }
 
 function exportAssignmentCSV() {
