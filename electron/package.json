@@ -2,6 +2,11 @@
   "name": "classify",
   "version": "1.0.0",
   "description": "Classify — Class Assignment Optimizer",
+  "author": "Classify",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/shobel/class-assigner.git"
+  },
   "main": "main.js",
   "scripts": {
     "start": "electron .",
@@ -13,6 +18,11 @@
     "appId": "com.classify.app",
     "productName": "Classify",
     "copyright": "Copyright © 2025",
+    "publish": {
+      "provider": "github",
+      "owner": "shobel",
+      "repo": "class-assigner"
+    },
     "directories": {
       "output": "../dist"
     },
