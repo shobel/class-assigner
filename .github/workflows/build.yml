@@ -3,8 +3,8 @@ name: Build Classify
 on:
   push:
     tags:
-      - 'v*'          # triggers on v1.0.0, v1.1.0, etc.
-  workflow_dispatch:   # also allows manual trigger from GitHub UI
+      - 'v*'
+  workflow_dispatch:
 
 jobs:
   build-mac:
@@ -29,10 +29,15 @@ jobs:
           node-version: '20'
 
       - name: Install Electron dependencies
-        run: cd electron && npm install
+        working-directory: electron
+        run: npm install
 
       - name: Build macOS DMG
-        run: cd electron && npx electron-builder --mac --publish never
+        working-directory: electron
+        run: npx electron-builder --mac --publish never
+
+      - name: List dist folder
+        run: ls -lh dist/
 
       - name: Upload DMG artifacts
         uses: actions/upload-artifact@v4
@@ -62,10 +67,16 @@ jobs:
           node-version: '20'
 
       - name: Install Electron dependencies
-        run: cd electron && npm install
+        working-directory: electron
+        run: npm install
 
       - name: Build Windows installer
-        run: cd electron && npx electron-builder --win --publish never
+        working-directory: electron
+        run: npx electron-builder --win --publish never
+
+      - name: List dist folder
+        run: Get-ChildItem dist/ -Recurse | Select-Object FullName, Length
+        shell: powershell
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
