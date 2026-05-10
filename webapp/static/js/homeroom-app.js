@@ -907,8 +907,8 @@ function renderRosterTab(students) {
           <div class="student-row" style="padding: 7px 12px; background: var(--bg-2); cursor: default; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); font-weight: 500; display: grid; grid-template-columns: ${gridColumns}; gap: 10px;">
             <div></div>
             <div>Student</div>
-            ${properties.map((p) => `<div>${p.display_name === "504 Plan" ? "504" : p.display_name}</div>`).join("")}
-            ${hasAssignments ? "<div>Assigned</div>" : ""}
+            ${properties.map((p) => `<div style="text-align:center">${p.display_name === "504 Plan" ? "504" : p.display_name}</div>`).join("")}
+            ${hasAssignments ? '<div style="text-align:center">Assigned</div>' : ""}
             <div></div>
           </div>
           <!-- Student rows -->
