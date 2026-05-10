@@ -3381,7 +3381,9 @@ function exportAssignmentCSV() {
   ];
 
   const gradeName = currentGrade?.name || "grade";
-  downloadCSV(csvLines.join("\n"), `${gradeName}_assignment.csv`);
+  const year = (config.active_school_year || config.school_year || "").replace(/[–—]/g, "-");
+  const filename = year ? `${gradeName}_${year}_assignment.csv` : `${gradeName}_assignment.csv`;
+  downloadCSV(csvLines.join("\n"), filename);
 }
 
 function convertToCSV(data) {
