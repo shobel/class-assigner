@@ -40,7 +40,7 @@ jobs:
           security create-keychain -p actions_keychain /tmp/build.keychain
           security default-keychain -s /tmp/build.keychain
           security unlock-keychain -p actions_keychain /tmp/build.keychain
-          security import /tmp/certificate.p12 -k /tmp/build.keychain -T /usr/bin/codesign
+          security import /tmp/certificate.p12 -k /tmp/build.keychain -P "" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k actions_keychain /tmp/build.keychain
           rm /tmp/certificate.p12
 
