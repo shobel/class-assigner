@@ -27,8 +27,11 @@
 }
 
 .onboarding-header h1 {
-  font-size: 32px;
-  font-weight: 500;
+  font-family: var(--t-display);
+  font-size: 36px;
+  font-weight: 400;
+  font-style: italic;
+  letter-spacing: -0.02em;
   margin: 0 0 12px 0;
   color: var(--ink);
 }
