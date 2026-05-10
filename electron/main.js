@@ -28,9 +28,20 @@ function startFlask() {
   return new Promise((resolve, reject) => {
     const serverBin = getServerPath();
     const env = { ...process.env, CLASSIFY_ELECTRON: '1' };
+    let stderrOutput = '';
 
     if (serverBin) {
-      // Production: run bundled binary
+      // Ensure binary is executable (permissions can be lost during packaging)
+      try {
+        fs.chmodSync(serverBin, 0o755);
+      } catch (e) {
+        // Ignore — might already be correct or read-only bundle
+      }
+
+      if (!fs.existsSync(serverBin)) {
+        return reject(new Error(`Server binary not found at:\n${serverBin}`));
+      }
+
       flaskProcess = spawn(serverBin, [], { env });
     } else {
       // Development: run via python from project root
@@ -41,8 +52,10 @@ function startFlask() {
     }
 
     const timeout = setTimeout(() => {
-      reject(new Error('Flask server did not start within 15 seconds'));
-    }, 15000);
+      reject(new Error(
+        `Flask server did not start within 30 seconds.\n\nServer output:\n${stderrOutput || '(none)'}`
+      ));
+    }, 30000);
 
     flaskProcess.stdout.on('data', (data) => {
       const text = data.toString();
@@ -55,20 +68,24 @@ function startFlask() {
     });
 
     flaskProcess.stderr.on('data', (data) => {
-      // Flask dev server writes to stderr — ignore in production, log in dev
+      const text = data.toString().trim();
+      stderrOutput += text + '\n';
       if (!app.isPackaged) {
-        console.error('[Flask]', data.toString().trim());
+        console.error('[Flask]', text);
       }
     });
 
     flaskProcess.on('error', (err) => {
       clearTimeout(timeout);
-      reject(err);
+      reject(new Error(`Failed to launch server binary:\n${err.message}\n\nPath: ${serverBin}`));
     });
 
-    flaskProcess.on('exit', (code) => {
+    flaskProcess.on('exit', (code, signal) => {
       if (code !== 0 && code !== null) {
-        console.error(`Flask exited with code ${code}`);
+        clearTimeout(timeout);
+        reject(new Error(
+          `Server exited with code ${code}.\n\nOutput:\n${stderrOutput || '(none)'}`
+        ));
       }
     });
   });
@@ -83,6 +100,7 @@ function createWindow(port) {
     minWidth: 900,
     minHeight: 600,
     titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
+    trafficLightPosition: process.platform === 'darwin' ? { x: 14, y: 18 } : undefined,
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
