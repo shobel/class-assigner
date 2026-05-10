@@ -99,8 +99,7 @@ function createWindow(port) {
     height: 820,
     minWidth: 900,
     minHeight: 600,
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'default',
-    trafficLightPosition: process.platform === 'darwin' ? { x: 14, y: 18 } : undefined,
+    titleBarStyle: 'default',
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,

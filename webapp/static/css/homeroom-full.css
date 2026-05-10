@@ -73,12 +73,6 @@ body {
   overflow-y: auto;
 }
 
-/* Dedicated drag strip at the top — traffic lights appear here on macOS */
-.electron-titlebar {
-  height: 44px;
-  flex-shrink: 0;
-  -webkit-app-region: drag;
-}
 
 .topbar {
   grid-area: topbar;
