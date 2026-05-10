@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Homeroom · Class Assignment Optimizer</title>
+    <title>Classify · Class Assignment Optimizer</title>
     <link rel="preconnect" href="https://fonts.googleapis.com"/>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
@@ -13,14 +13,40 @@
     <link rel="stylesheet" href="/static/css/transition.css">
     <link rel="stylesheet" href="/static/css/onboarding.css">
     <link rel="stylesheet" href="/static/css/toggle.css">
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
 </head>
 <body>
     <div class="app" id="app">
         <!-- Sidebar -->
         <aside class="sidebar">
             <div class="brand">
-                <div class="brand-mark">H</div>
-                <div class="brand-name">Home<em>room</em></div>
+                <div class="brand-mark">C</div>
+                <div>
+                    <div class="brand-name"><span class="brand-class">Class</span>ify</div>
+                    <div id="brand-school-name" style="font-size:11px;color:var(--ink-3);margin-top:1px;line-height:1"></div>
+                </div>
+            </div>
+
+            <div class="nav" style="margin-bottom: 4px;">
+                <div class="nav-item" id="nav-welcome" onclick="showScreen('welcome')">
+                    <svg class="nav-icon" width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                        <path d="M3 2h8a1 1 0 011 1v8a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1zm2 3h4v1H5V5zm0 2h4v1H5V7z"/>
+                    </svg>
+                    <span class="nav-label">Getting started</span>
+                </div>
+                <div class="nav-item" id="nav-config" onclick="showScreen('config')">
+                    <svg class="nav-icon" width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                        <path d="M7 9a2 2 0 100-4 2 2 0 000 4z"/>
+                        <path d="M12 7c0-.34-.03-.67-.08-1h1.33l-.75-1.3-1.33.77a5 5 0 00-1.42-1.42l.77-1.33-1.3-.75-1 1.33a5 5 0 00-2 0l-1-1.33-1.3.75.77 1.33a5 5 0 00-1.42 1.42l-1.33-.77-.75 1.3h1.33c-.05.33-.08.66-.08 1s.03.67.08 1H.25l.75 1.3 1.33-.77a5 5 0 001.42 1.42l-.77 1.33 1.3.75 1-1.33a5 5 0 002 0l1 1.33 1.3-.75-.77-1.33a5 5 0 001.42-1.42l1.33.77.75-1.3h-1.33c.05-.33.08-.66.08-1z"/>
+                    </svg>
+                    <span class="nav-label">Rules & weights</span>
+                </div>
+                <div class="nav-item" id="nav-school-config" onclick="showScreen('school-config')">
+                    <svg class="nav-icon" width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                        <path d="M7 1L1 4v1h12V4L7 1zM2 6v5h2V6H2zm4 0v5h2V6H6zm4 0v5h2V6h-2zM1 12h12v1H1v-1z"/>
+                    </svg>
+                    <span class="nav-label">School config</span>
+                </div>
             </div>
 
             <div class="side-section">
@@ -31,24 +57,9 @@
                 <!-- School years will be loaded here -->
             </div>
 
-            <div class="nav">
-                <div class="nav-item" id="nav-config" onclick="showScreen('config')">
-                    <svg class="nav-icon" width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                        <path d="M7 9a2 2 0 100-4 2 2 0 000 4z"/>
-                        <path d="M12 7c0-.34-.03-.67-.08-1h1.33l-.75-1.3-1.33.77a5 5 0 00-1.42-1.42l.77-1.33-1.3-.75-1 1.33a5 5 0 00-2 0l-1-1.33-1.3.75.77 1.33a5 5 0 00-1.42 1.42l-1.33-.77-.75 1.3h1.33c-.05.33-.08.66-.08 1s.03.67.08 1H.25l.75 1.3 1.33-.77a5 5 0 001.42 1.42l-.77 1.33 1.3.75 1-1.33a5 5 0 002 0l1 1.33 1.3-.75-.77-1.33a5 5 0 001.42-1.42l1.33.77.75-1.3h-1.33c.05-.33.08-.66.08-1z"/>
-                    </svg>
-                    <span class="nav-label">Rules & weights</span>
-                </div>
-                <div class="nav-item" id="nav-welcome" onclick="showScreen('welcome')">
-                    <svg class="nav-icon" width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                        <path d="M3 2h8a1 1 0 011 1v8a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1zm2 3h4v1H5V5zm0 2h4v1H5V7z"/>
-                    </svg>
-                    <span class="nav-label">Getting started</span>
-                </div>
-            </div>
-
             <div class="side-section">
                 Grades
+                <button title="Add grade" onclick="openAddGradeModal()">+</button>
             </div>
             <div class="nav" style="padding: 0; gap: 0" id="gradeNav">
                 <!-- Grades will be loaded here -->
@@ -56,8 +67,9 @@
 
             <div style="flex:1"></div>
             <div class="side-section" style="border-top:1px solid var(--line-soft); margin-top: 8px; padding-top: 12px; padding-bottom: 12px;">
-                <span style="text-transform:none; letter-spacing:0; font-family:var(--t-ui); font-size:11px">
-                    ℹ️ All data stays on this device
+                <span style="text-transform:none; letter-spacing:0; font-family:var(--t-ui); font-size:11px; display:flex; align-items:center; gap:6px">
+                    <i data-lucide="lock" style="width:11px;height:11px;flex-shrink:0"></i>
+                    All data stays on this device
                 </span>
             </div>
         </aside>
@@ -72,9 +84,6 @@
                 <span class="cur" id="crumb-screen">...</span>
             </div>
             <div class="topbar-spacer"></div>
-            <div class="topbar-meta">
-                <span><span class="dot"></span>Local · <span id="student-count">0</span> students cached</span>
-            </div>
         </div>
 
         <!-- Main -->
@@ -92,7 +101,7 @@
     <div id="configModal" class="modal">
         <div class="modal-content modal-large">
             <div class="modal-header">
-                <h2>⚙️ Assignment Rules Configuration</h2>
+                <h2>Assignment Rules Configuration</h2>
                 <button class="btn-close" onclick="closeConfigModal()">×</button>
             </div>
             <div class="modal-body" id="configModalBody">
@@ -104,7 +113,7 @@
     <div id="importModal" class="modal">
         <div class="modal-content modal-large">
             <div class="modal-header">
-                <h2>📥 Import Student Data</h2>
+                <h2>Import Student Data</h2>
                 <button class="btn-close" onclick="closeImportModal()">×</button>
             </div>
             <div class="modal-body" id="importModalBody">
@@ -250,7 +259,7 @@
     <div id="gradeSettingsModal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>⚙️ <span id="gradeSettingsTitle">Grade Settings</span></h2>
+                <h2><span id="gradeSettingsTitle">Grade Settings</span></h2>
                 <button class="btn-close" onclick="closeGradeSettings()">×</button>
             </div>
             <div class="modal-body" id="gradeSettingsBody">
@@ -289,7 +298,7 @@
     <div class="onboarding-overlay" id="onboardingOverlay">
         <div class="onboarding-container">
             <div class="onboarding-header">
-                <h1>Welcome to <em>Homeroom</em></h1>
+                <h1>Welcome to <em>Classify</em></h1>
                 <p class="lede">Let's get started by importing your current student roster. Upload a CSV with all students and their grades.</p>
             </div>
 
@@ -304,7 +313,7 @@
                     <h3>Upload Student Roster</h3>
                     <p>Drop your CSV file here, or click to browse.</p>
                     <div class="drop-zone" id="dropZone">
-                        <div class="drop-zone-icon">📄</div>
+                        <div class="drop-zone-icon"></div>
                         <div class="drop-zone-text">Drop CSV file or click to upload</div>
                         <div class="drop-zone-hint">Must include "name" and "grade" columns</div>
                     </div>
@@ -343,8 +352,9 @@ Jane Doe,Kindergarten,F,m,h,neutral,neutral,n,y,n,n,John Smith,
         </div>
     </div>
 
-    <script src="/static/js/homeroom-app.js?v=18"></script>
+    <script src="/static/js/homeroom-app.js?v=19"></script>
     <script src="/static/js/transition.js"></script>
     <script src="/static/js/onboarding.js"></script>
+    <script>lucide.createIcons();</script>
 </body>
 </html>

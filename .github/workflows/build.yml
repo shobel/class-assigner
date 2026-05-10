@@ -1,0 +1,78 @@
+name: Build Classify
+
+on:
+  push:
+    tags:
+      - 'v*'          # triggers on v1.0.0, v1.1.0, etc.
+  workflow_dispatch:   # also allows manual trigger from GitHub UI
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build Flask bundle (PyInstaller)
+        run: python -m PyInstaller classify.spec --noconfirm --clean
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Electron dependencies
+        run: cd electron && npm install
+
+      - name: Build macOS DMG
+        run: cd electron && npm run dist:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload DMG artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: Classify-mac
+          path: dist/Classify-*.dmg
+
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt pyinstaller
+
+      - name: Build Flask bundle (PyInstaller)
+        run: python -m PyInstaller classify.spec --noconfirm --clean
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Electron dependencies
+        run: cd electron && npm install
+
+      - name: Build Windows installer
+        run: cd electron && npm run dist:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload EXE artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Classify-win
+          path: dist/Classify-Setup-*.exe

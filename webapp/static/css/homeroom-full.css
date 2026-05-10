@@ -32,9 +32,14 @@
   --t-ui: "Geist", -apple-system, sans-serif;
 }
 
-* { box-sizing: border-box; margin: 0; padding: 0; }
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
 
-html, body {
+html,
+body {
   height: 100%;
   overflow: hidden;
 }
@@ -101,7 +106,7 @@ body {
   width: 22px;
   height: 22px;
   border-radius: 6px;
-  background: var(--ink);
+  background: var(--terra);
   color: var(--bg);
   display: grid;
   place-items: center;
@@ -113,15 +118,20 @@ body {
 
 .brand-name {
   font-family: var(--t-display);
-  font-size: 19px;
-  letter-spacing: -0.02em;
+  font-size: 28px;
+  letter-spacing: -0.03em;
   font-weight: 400;
   color: var(--ink);
+  font-style: italic;
 }
 
 .brand-name em {
   color: var(--terra);
   font-style: italic;
+}
+
+.brand-class {
+  color: var(--terra);
 }
 
 /* Sidebar Sections */
@@ -211,6 +221,39 @@ body {
   border-color: rgba(255, 255, 255, 0.5);
 }
 
+.year-nav-item {
+  border-left: 2px solid transparent;
+  padding-left: 6px;
+}
+
+.year-nav-item.year-active {
+  background: var(--bg-3);
+  border-left-color: var(--terra);
+  color: var(--ink);
+}
+
+.year-nav-item:hover {
+  background: var(--bg-3);
+}
+
+.year-nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.year-nav-item .year-nav-actions .btn-tiny,
+.year-nav-item .nav-clear {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.year-nav-item:hover .year-nav-actions .btn-tiny,
+.year-nav-item:hover .nav-clear {
+  opacity: 1;
+}
+
 .nav-icon {
   width: 14px;
   height: 14px;
@@ -241,6 +284,26 @@ body {
 
 .grade-row:hover {
   background: var(--bg-3);
+}
+
+.grade-delete-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--ink-3);
+  font-size: 14px;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.1s;
+}
+
+.grade-row:hover .grade-delete-btn {
+  opacity: 1;
+}
+
+.grade-delete-btn:hover {
+  color: var(--rose);
 }
 
 .grade-row.active {
@@ -705,7 +768,7 @@ body {
 }
 
 /* Range slider */
-input[type=range].slider {
+input[type="range"].slider {
   appearance: none;
   -webkit-appearance: none;
   width: 100%;
@@ -715,7 +778,7 @@ input[type=range].slider {
   outline: none;
 }
 
-input[type=range].slider::-webkit-slider-thumb {
+input[type="range"].slider::-webkit-slider-thumb {
   appearance: none;
   -webkit-appearance: none;
   width: 14px;
@@ -727,7 +790,7 @@ input[type=range].slider::-webkit-slider-thumb {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15);
 }
 
-input[type=range].slider::-moz-range-thumb {
+input[type="range"].slider::-moz-range-thumb {
   width: 14px;
   height: 14px;
   border-radius: 50%;

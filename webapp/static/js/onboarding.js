@@ -1,4 +1,5 @@
 // Onboarding flow for new schools
+// Normalization helpers — exposed globally so homeroom-app.js and transition.js can use them
 
 let onboardingState = {
   schoolYear: '',
@@ -194,7 +195,7 @@ function parseRosterCSV(csvText) {
     const maxShow = 10;
     const errorList = skippedRows.slice(0, maxShow).join('\n');
     const moreCount = skippedRows.length - maxShow;
-    const warningMsg = `⚠️ Imported ${totalStudents} students successfully.\n\nSkipped ${skippedRows.length} row${skippedRows.length > 1 ? 's' : ''} with issues:\n\n${errorList}${moreCount > 0 ? `\n\n...and ${moreCount} more issue${moreCount > 1 ? 's' : ''}` : ''}`;
+    const warningMsg = `Imported ${totalStudents} students successfully.\n\nSkipped ${skippedRows.length} row${skippedRows.length > 1 ? 's' : ''} with issues:\n\n${errorList}${moreCount > 0 ? `\n\n...and ${moreCount} more issue${moreCount > 1 ? 's' : ''}` : ''}`;
     showWarning(warningMsg);
     console.warn('Skipped rows:', skippedRows);
   }
@@ -253,6 +254,14 @@ function normalizeIndependence(val) {
   if (v.startsWith('l') || v === 'low') return 'low';
   return 'neutral';
 }
+
+// Expose normalization helpers globally
+window.normalizeGradeName = normalizeGradeName;
+window.normalizeGender = normalizeGender;
+window.normalizeYesNo = normalizeYesNo;
+window.normalizeLevelHML = normalizeLevelHML;
+window.normalizeBehavior = normalizeBehavior;
+window.normalizeIndependence = normalizeIndependence;
 
 function showPreview(roster, totalStudents) {
   const gradeOrder = ['Kindergarten', '1st Grade', '2nd Grade', '3rd Grade', '4th Grade', '5th Grade', '6th Grade', '7th Grade', '8th Grade'];

@@ -352,8 +352,20 @@ def solve_classes(input_path="students_sample_v2.csv", output_path="class_assign
     print(f"Runtime: {elapsed:.2f} seconds\n")
 
     if status not in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
-        print("No valid assignment found.")
-        return
+        details = (
+            f"{num_students} students · {n_classes} classes · "
+            f"size {min_students}–{max_students} ({'hard' if enforce_class_size else 'soft'}) · "
+            f"{len(incompatible_pairs)} incompatible pair(s)"
+        )
+        if enforce_class_size and (num_students < min_students * n_classes or num_students > max_students * n_classes):
+            hint = (
+                f"Class size is enforced as a hard constraint but {num_students} students "
+                f"can't fit into {n_classes} classes of {min_students}–{max_students}. "
+                f"Adjust class size limits or turn off hard enforcement."
+            )
+        else:
+            hint = "Check class size settings or incompatible pair constraints."
+        raise Exception(f"No valid assignment found ({details}). {hint}")
 
     assignments = []
     class_to_students = defaultdict(list)
@@ -379,6 +391,16 @@ def solve_classes(input_path="students_sample_v2.csv", output_path="class_assign
     verify_incompatibles(assignments, name_to_index)
 
     print_balance_report(class_to_students)
+
+    total_with_friend = sum(a.get('has_friend_in_class', 0) for a in assignments)
+    friend_satisfaction = total_with_friend / len(assignments) if assignments else 0
+
+    return {
+        'status': status_name,  # 'OPTIMAL' or 'FEASIBLE'
+        'elapsed': round(elapsed, 2),
+        'objective': solver.ObjectiveValue(),
+        'friend_satisfaction': round(friend_satisfaction, 3),
+    }
 
 
 def verify_incompatibles(assignments, name_to_index):

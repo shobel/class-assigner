@@ -15,13 +15,18 @@ async function showTransitionWizard() {
   const nextYear = `${startYear + 1}–${String(startYear + 2).slice(-2)}`;
 
   transitionData.nextYear = nextYear;
+  transitionData.maxGrade = config.max_grade || '8th Grade';
   document.getElementById('next-year-name').textContent = nextYear;
 
   // Load current year data
   const currentData = await (await fetch(`/api/grades`)).json();
 
   // Prepare promoted grades
-  const gradeMap = {
+  const allGradeOrder = ['Kindergarten', '1st Grade', '2nd Grade', '3rd Grade', '4th Grade', '5th Grade', '6th Grade', '7th Grade', '8th Grade'];
+  const maxGrade = config.max_grade || '8th Grade';
+  const maxGradeIdx = allGradeOrder.indexOf(maxGrade);
+
+  const fullGradeMap = {
     'kindergarten': '1st Grade',
     '1st_grade': '2nd Grade',
     '2nd_grade': '3rd Grade',
@@ -31,6 +36,15 @@ async function showTransitionWizard() {
     '6th_grade': '7th Grade',
     '7th_grade': '8th Grade'
   };
+
+  // Only include promotions that land at or below max_grade
+  const gradeMap = {};
+  for (const [from, to] of Object.entries(fullGradeMap)) {
+    if (allGradeOrder.indexOf(to) <= maxGradeIdx) {
+      gradeMap[from] = to;
+    }
+    // Students at max grade are graduated — simply omit them
+  }
 
   transitionData.grades = {
     'Kindergarten': []  // Empty for new students
@@ -60,7 +74,10 @@ async function showTransitionWizard() {
 function renderTransitionGrades() {
   const container = document.getElementById('transitionGrades');
 
-  const gradeOrder = ['Kindergarten', '1st Grade', '2nd Grade', '3rd Grade', '4th Grade', '5th Grade', '6th Grade', '7th Grade', '8th Grade'];
+  const allGradeOrder = ['Kindergarten', '1st Grade', '2nd Grade', '3rd Grade', '4th Grade', '5th Grade', '6th Grade', '7th Grade', '8th Grade'];
+  const maxGrade = (window.config || {}).max_grade || transitionData.maxGrade || '8th Grade';
+  const maxGradeIdx = allGradeOrder.indexOf(maxGrade);
+  const gradeOrder = maxGradeIdx >= 0 ? allGradeOrder.slice(0, maxGradeIdx + 1) : allGradeOrder;
 
   container.innerHTML = gradeOrder.map(gradeName => {
     if (!transitionData.grades[gradeName]) return '';
@@ -78,7 +95,7 @@ function renderTransitionGrades() {
         <div class="transition-grade-actions">
           ${gradeName === 'Kindergarten' ? `
             <label class="btn sm ghost" style="cursor: pointer;">
-              📥 Import CSV
+              Import CSV
               <input type="file" accept=".csv" style="display:none" onchange="importKindergartenCSV(event, '${gradeName}')">
             </label>
           ` : ''}
@@ -154,15 +171,19 @@ function addStudent(gradeName) {
   const math = document.getElementById(`math-${gradeName}`).value;
 
   if (!fname || !lname) {
-    alert('Please enter first and last name');
+    showNotice('Please enter first and last name', 'error');
     return;
   }
 
   const newStudent = {
     name: `${fname} ${lname}`,
     gender: gender,
-    problematic: 'n',
-    special_needs: 'n',
+    behavior: 'neutral',
+    independence: 'neutral',
+    iep: false,
+    '504': false,
+    esl: false,
+    gate: false,
     math: math,
     reading: 'm',
     friends: '',
@@ -223,8 +244,12 @@ async function importKindergartenCSV(event, gradeName) {
     transitionData.grades[gradeName].push({
       name: name,
       gender: gender.toLowerCase().startsWith('f') || gender.toLowerCase().startsWith('g') ? 'g' : 'b',
-      problematic: 'n',
-      special_needs: 'n',
+      behavior: 'neutral',
+      independence: 'neutral',
+      iep: false,
+      '504': false,
+      esl: false,
+      gate: false,
       math: 'm',
       reading: 'm',
       friends: '',
@@ -250,9 +275,9 @@ function closeTransitionWizard() {
 }
 
 async function confirmTransition() {
-  if (!confirm(`Create ${transitionData.nextYear} with ${document.getElementById('transition-total-students').textContent} students?`)) {
-    return;
-  }
+  const total = document.getElementById('transition-total-students').textContent;
+  const ok = await showConfirm(`Create ${transitionData.nextYear} with ${total} students?`, { confirmLabel: 'Create' });
+  if (!ok) return;
 
   // Prepare data for new year
   const newYearData = {};
@@ -287,9 +312,9 @@ async function confirmTransition() {
     await loadConfig();
     await loadGrades();
     showScreen('welcome');
-    alert(`${transitionData.nextYear} created successfully!`);
+    showNotice(`${transitionData.nextYear} created successfully!`);
   } else {
-    alert('Error creating school year');
+    showNotice('Error creating school year', 'error');
   }
 }
 

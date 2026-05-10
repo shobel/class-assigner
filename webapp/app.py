@@ -5,21 +5,94 @@ Flask backend for the assignment tool
 
 from flask import Flask, render_template, request, jsonify, send_file
 import json
+import math
 import os
 import sys
+import socket
+import platform
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
 
-# Add parent directory to path to import solver
+
+def get_resource_path(relative_path):
+    """Get absolute path to a resource — works in dev and PyInstaller bundle."""
+    if getattr(sys, 'frozen', False):
+        base = Path(sys._MEIPASS)
+    else:
+        base = Path(__file__).parent
+    return str(base / relative_path)
+
+
+def get_data_dir():
+    """Return platform-appropriate user data directory."""
+    if getattr(sys, 'frozen', False):
+        system = platform.system()
+        if system == 'Darwin':
+            data_dir = Path.home() / 'Library' / 'Application Support' / 'Classify'
+        elif system == 'Windows':
+            data_dir = Path(os.environ.get('APPDATA', Path.home())) / 'Classify'
+        else:
+            data_dir = Path.home() / '.config' / 'Classify'
+    else:
+        data_dir = Path(__file__).parent / 'data'
+    data_dir.mkdir(parents=True, exist_ok=True)
+    return data_dir
+
+
+def find_free_port():
+    """Find an available TCP port."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('', 0))
+        return s.getsockname()[1]
+
+
+def format_combinations(n_students, n_classes):
+    """Format the number of unordered partitions of n_students into n_classes unlabeled groups."""
+    if n_students <= 0 or n_classes <= 1:
+        return "1"
+
+    # Distribute students as evenly as possible
+    base = n_students // n_classes
+    remainder = n_students % n_classes
+    sizes = [base + 1] * remainder + [base] * (n_classes - remainder)
+
+    # Compute log10 of n! / (s1! * s2! * ... * sk! * k!)
+    log_result = math.lgamma(n_students + 1) / math.log(10)
+    for s in sizes:
+        log_result -= math.lgamma(s + 1) / math.log(10)
+    log_result -= math.log10(math.factorial(n_classes))
+
+    if log_result < 4:
+        return f"{int(round(10 ** log_result)):,}"
+
+    # Map exponent to number name (short scale, groups of 10^3)
+    names = [
+        (303, 'centillion'), (63, 'vigintillion'), (60, 'novemdecillion'),
+        (57, 'octodecillion'), (54, 'septendecillion'), (51, 'sexdecillion'),
+        (48, 'quindecillion'), (45, 'quattuordecillion'), (42, 'tredecillion'),
+        (39, 'duodecillion'), (36, 'undecillion'), (33, 'decillion'),
+        (30, 'nonillion'), (27, 'octillion'), (24, 'septillion'),
+        (21, 'sextillion'), (18, 'quintillion'), (15, 'quadrillion'),
+        (12, 'trillion'), (9, 'billion'), (6, 'million'), (3, 'thousand'),
+    ]
+    for exp, name in names:
+        if log_result >= exp:
+            coeff = 10 ** (log_result - exp)
+            return f"{coeff:.0f} {name}"
+
+    return f"10^{int(log_result)}"
+
+# Add parent directory to path to import solver (dev mode); PyInstaller bundles it alongside
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from class_solver_v2 import solve_classes, load_students
 
-app = Flask(__name__)
+app = Flask(__name__,
+    template_folder=get_resource_path('templates'),
+    static_folder=get_resource_path('static'))
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
-DATA_DIR = Path(__file__).parent / "data"
-DATA_DIR.mkdir(exist_ok=True)
+DATA_DIR = get_data_dir()
 
 SCHOOL_YEARS_DIR = DATA_DIR / "school_years"
 SCHOOL_YEARS_DIR.mkdir(exist_ok=True)
@@ -240,6 +313,7 @@ DEFAULT_CONFIG = {
     "school_name": "School",
     "school_year": None,  # Will be auto-calculated
     "active_school_year": None,  # Currently selected year for viewing
+    "current_school_year": None,  # User-designated "current" year (visual only)
     "available_school_years": []  # List of all years with data
 }
 
@@ -411,9 +485,18 @@ def api_school_years():
     config = load_config()
     return jsonify({
         'years': years,
-        'current': config['school_year'],
+        'current': config.get('current_school_year'),
         'active': config['active_school_year']
     })
+
+
+@app.route('/api/school-years/<school_year>/set-current', methods=['POST'])
+def api_set_current_year(school_year):
+    """Set the user-designated current school year (visual only)"""
+    config = load_config()
+    config['current_school_year'] = school_year
+    save_config(config)
+    return jsonify({'status': 'success', 'current_school_year': school_year})
 
 
 @app.route('/api/school-years/<school_year>', methods=['POST'])
@@ -478,7 +561,6 @@ def api_create_next_year_manual():
     # Update config
     config = load_config()
     config['available_school_years'] = list_school_years()
-    config['active_school_year'] = next_year
     save_config(config)
 
     return jsonify({
@@ -507,6 +589,55 @@ def api_grades():
             'status': 'assigned' if has_assignments else ('imported' if students else 'empty')
         })
     return jsonify(grades)
+
+@app.route('/api/grades/add-grade', methods=['POST'])
+def api_add_grade():
+    """Create a new grade in the active school year"""
+    data = request.json
+    grade_name = data.get('grade_name')
+    students = data.get('students', [])
+
+    if not grade_name:
+        return jsonify({'error': 'Missing grade_name'}), 400
+
+    config = load_config()
+    active_year = config.get('active_school_year', config['school_year'])
+    students_data = load_school_year_data(active_year)
+
+    num_classes = 3 if grade_name == 'Kindergarten' else 5
+    avg = len(students) / num_classes if num_classes > 0 and students else 20
+
+    students_data[grade_name] = {
+        'students': students,
+        'num_classes': num_classes,
+        'min_students': max(1, int(avg * 0.8)),
+        'max_students': int(avg * 1.2) + 2,
+        'assignments': []
+    }
+    save_school_year_data(active_year, students_data)
+    return jsonify({'status': 'success', 'count': len(students)})
+
+
+@app.route('/api/grades/<grade_id>', methods=['DELETE'])
+def api_delete_grade(grade_id):
+    """Delete a grade from the active school year"""
+    config = load_config()
+    active_year = config.get('active_school_year', config['school_year'])
+    students_data = load_school_year_data(active_year)
+
+    grade_name = None
+    for name in students_data.keys():
+        if name.lower().replace(' ', '_') == grade_id:
+            grade_name = name
+            break
+
+    if not grade_name:
+        return jsonify({'error': 'Grade not found'}), 404
+
+    del students_data[grade_name]
+    save_school_year_data(active_year, students_data)
+    return jsonify({'status': 'success'})
+
 
 @app.route('/api/grades/<grade_id>/students', methods=['GET', 'POST'])
 def api_grade_students(grade_id):
@@ -561,10 +692,12 @@ def api_grade_assignments(grade_id):
         return jsonify({'error': 'Grade not found'}), 404
 
     if request.method == 'POST':
-        # Update assignments (from drag/drop)
+        # Update assignments (from drag/drop or auto-save)
         data = request.json
         if 'assignments' in data:
             students_data[grade_name]['assignments'] = data['assignments']
+            # Every explicit save becomes the new revert point
+            students_data[grade_name]['solver_baseline'] = data['assignments'].copy()
             save_school_year_data(active_year, students_data)
             return jsonify({'status': 'success'})
         return jsonify({'error': 'No assignments data provided'}), 400
@@ -574,7 +707,10 @@ def api_grade_assignments(grade_id):
     return jsonify({
         'assignments': grade_data.get('assignments', []),
         'solver_baseline': grade_data.get('solver_baseline', []),
-        'num_classes': grade_data.get('num_classes', 5)
+        'num_classes': grade_data.get('num_classes', 5),
+        'solver_status': grade_data.get('solver_status'),
+        'solver_elapsed': grade_data.get('solver_elapsed'),
+        'solver_combinations': grade_data.get('solver_combinations'),
     })
 
 
@@ -825,7 +961,7 @@ def api_assign(grade_id):
         try:
             # Run solver with custom parameters - use absolute paths
             print(f"Running solver with input: {temp_input}, output: {temp_output}")
-            solve_classes(
+            solver_result = solve_classes(
                 str(temp_input),
                 str(temp_output),
                 num_classes=num_classes,
@@ -834,25 +970,30 @@ def api_assign(grade_id):
                 enforce_class_size=enforce_class_size,
                 properties_config=properties_config
             )
-            print(f"Solver completed")
+            print(f"Solver completed: {solver_result}")
         except Exception as solver_error:
             os.chdir(original_dir)
             raise Exception(f"Solver failed: {solver_error}")
         finally:
             os.chdir(original_dir)
 
-        # Check if output file was created
+        # Check if output file was created (shouldn't happen since solver raises on failure, but safety check)
         if not temp_output.exists():
-            raise Exception(f"Solver did not create output file: {temp_output}")
+            raise Exception(f"Solver did not produce output for {num_classes} classes. Check server logs for details.")
 
         # Read results
         results_df = pd.read_csv(temp_output)
         assignments = results_df.to_dict('records')
 
+        combinations = format_combinations(len(students), num_classes)
+
         # Save assignments back to school year data
         # Store both solver baseline and current assignments
         students_data[grade_name]['assignments'] = assignments
-        students_data[grade_name]['solver_baseline'] = assignments.copy()  # Store solver results separately
+        students_data[grade_name]['solver_baseline'] = assignments.copy()
+        students_data[grade_name]['solver_status'] = solver_result.get('status') if solver_result else None
+        students_data[grade_name]['solver_elapsed'] = solver_result.get('elapsed') if solver_result else None
+        students_data[grade_name]['solver_combinations'] = combinations
         save_school_year_data(active_year, students_data)
 
         # Clean up temp files
@@ -863,7 +1004,10 @@ def api_assign(grade_id):
             "status": "success",
             "assignments": assignments,
             "num_classes": num_classes,
-            "student_count": len(students)
+            "student_count": len(students),
+            "solver_status": solver_result.get('status') if solver_result else None,
+            "elapsed": solver_result.get('elapsed') if solver_result else None,
+            "combinations": combinations,
         })
 
     except Exception as e:
@@ -915,10 +1059,16 @@ def auto_detect_columns(csv_columns, property_names):
 
 
 if __name__ == '__main__':
-    print("\n" + "="*60)
-    print("Class Assignment Optimizer - Web App")
-    print("="*60)
-    print("\nStarting server on http://localhost:5001")
-    print("\nPress Ctrl+C to stop\n")
-
-    app.run(debug=True, port=5001)
+    # If launched by Electron, use a random port and signal readiness via stdout
+    if os.environ.get('CLASSIFY_ELECTRON'):
+        port = find_free_port()
+        # Flush immediately so Electron can read it
+        print(f'CLASSIFY_PORT:{port}', flush=True)
+        app.run(host='127.0.0.1', port=port, debug=False, use_reloader=False)
+    else:
+        print("\n" + "="*60)
+        print("Classify - Class Assignment Optimizer")
+        print("="*60)
+        print("\nStarting server on http://localhost:5001")
+        print("\nPress Ctrl+C to stop\n")
+        app.run(debug=True, port=5001)

@@ -36,3 +36,15 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Electron
+electron/node_modules/
+
+# Claude Code
+.claude/
+
+# User data (local school data — not for repo)
+webapp/data/school_years/
+webapp/data/config.json
+webapp/data/*.json
+webapp/data/*.backup
