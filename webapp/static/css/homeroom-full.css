@@ -1,5 +1,26 @@
 /* Homeroom Full Design System */
 
+/* ── Activation overlay ─────────────────────────────────────────────────── */
+#activation-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+#activation-overlay.hidden { display: none; }
+#activation-box {
+  width: 340px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 36px 32px 28px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+  text-align: center;
+}
+
 :root {
   --bg: oklch(0.975 0.008 75);
   --bg-2: oklch(0.955 0.012 75);

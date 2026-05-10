@@ -110,18 +110,90 @@ async function clearSchoolYear(year) {
 }
 
 // Initialize
-document.addEventListener("DOMContentLoaded", async () => {
-  // Check if onboarding is needed
-  const needsOnboarding = await checkOnboarding();
+// ── Activation ───────────────────────────────────────────────────────────────
 
+// Replace with your Supabase project URL and anon key
+const SUPABASE_URL = 'https://YOUR_PROJECT.supabase.co';
+const SUPABASE_ANON_KEY = 'YOUR_ANON_KEY';
+
+async function checkActivation() {
+  const res = await fetch('/api/activation-status');
+  const data = await res.json();
+  return data.activated;
+}
+
+async function submitActivationCode() {
+  const input = document.getElementById('activation-input');
+  const errorEl = document.getElementById('activation-error');
+  const btn = document.getElementById('activation-btn');
+  const code = input.value.trim().toUpperCase();
+
+  if (!code) {
+    errorEl.textContent = 'Please enter your activation code.';
+    errorEl.style.display = 'block';
+    return;
+  }
+
+  btn.textContent = 'Checking…';
+  btn.disabled = true;
+  errorEl.style.display = 'none';
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/functions/v1/validate-code`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+      },
+      body: JSON.stringify({ code }),
+    });
+
+    const data = await res.json();
+
+    if (data.valid) {
+      // Save activation locally
+      await fetch('/api/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      // Hide overlay and start app
+      document.getElementById('activation-overlay').classList.add('hidden');
+      await startApp();
+    } else {
+      errorEl.textContent = data.error || 'Invalid or already used code.';
+      errorEl.style.display = 'block';
+      btn.textContent = 'Activate';
+      btn.disabled = false;
+    }
+  } catch (err) {
+    errorEl.textContent = 'Could not reach activation server. Check your internet connection.';
+    errorEl.style.display = 'block';
+    btn.textContent = 'Activate';
+    btn.disabled = false;
+  }
+}
+
+async function startApp() {
+  const needsOnboarding = await checkOnboarding();
   if (!needsOnboarding) {
-    // Normal app flow
     await loadConfig();
     await loadGrades();
     showScreen("welcome");
   } else {
-    // Setup onboarding UI
     setupDropZone();
+  }
+}
+
+document.addEventListener("DOMContentLoaded", async () => {
+  const activated = await checkActivation();
+  if (!activated) {
+    // Show activation overlay, app stays hidden until code is entered
+    document.getElementById('activation-overlay').classList.remove('hidden');
+    document.getElementById('activation-input').focus();
+  } else {
+    document.getElementById('activation-overlay').classList.add('hidden');
+    await startApp();
   }
 });
 

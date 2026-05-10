@@ -314,7 +314,9 @@ DEFAULT_CONFIG = {
     "school_year": None,  # Will be auto-calculated
     "active_school_year": None,  # Currently selected year for viewing
     "current_school_year": None,  # User-designated "current" year (visual only)
-    "available_school_years": []  # List of all years with data
+    "available_school_years": [],  # List of all years with data
+    "activated": False,
+    "activation_code": None
 }
 
 
@@ -772,6 +774,27 @@ def api_update_grade_settings(grade_id):
         students_data[grade_name]['enforce_class_size'] = data['enforce_class_size']
 
     save_school_year_data(active_year, students_data)
+    return jsonify({'status': 'success'})
+
+
+@app.route('/api/activation-status', methods=['GET'])
+def api_activation_status():
+    """Check whether this installation has been activated"""
+    config = load_config()
+    return jsonify({'activated': config.get('activated', False)})
+
+
+@app.route('/api/activate', methods=['POST'])
+def api_activate():
+    """Save activation after frontend has validated code with Supabase"""
+    data = request.json or {}
+    code = data.get('code', '').strip()
+    if not code:
+        return jsonify({'error': 'No code provided'}), 400
+    config = load_config()
+    config['activated'] = True
+    config['activation_code'] = code
+    save_config(config)
     return jsonify({'status': 'success'})
 
 
