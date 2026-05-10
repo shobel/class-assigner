@@ -1,35 +1,50 @@
 # -*- mode: python ; coding: utf-8 -*-
 # PyInstaller spec for Classify
-# Run: pyinstaller classify.spec
 
-import sys
 from pathlib import Path
+from PyInstaller.utils.hooks import collect_all, collect_submodules
 
 block_cipher = None
+
+# Collect everything for packages that have known PyInstaller issues
+flask_datas, flask_bins, flask_hiddenimports = collect_all('flask')
+jinja_datas, jinja_bins, jinja_hiddenimports = collect_all('jinja2')
+werkzeug_datas, werkzeug_bins, werkzeug_hiddenimports = collect_all('werkzeug')
+click_datas, click_bins, click_hiddenimports = collect_all('click')
+ortools_datas, ortools_bins, ortools_hiddenimports = collect_all('ortools')
+
+all_datas = (
+    flask_datas + jinja_datas + werkzeug_datas + click_datas + ortools_datas +
+    [
+        ('webapp/templates', 'templates'),
+        ('webapp/static',    'static'),
+        ('class_solver_v2.py', '.'),
+    ]
+)
+
+all_binaries = flask_bins + jinja_bins + werkzeug_bins + click_bins + ortools_bins
+
+all_hiddenimports = (
+    flask_hiddenimports + jinja_hiddenimports +
+    werkzeug_hiddenimports + click_hiddenimports +
+    ortools_hiddenimports +
+    collect_submodules('ortools') +
+    [
+        'pandas',
+        'numpy',
+        'itsdangerous',
+        'markupsafe',
+        'importlib_metadata',
+        'pkg_resources',
+    ]
+)
 
 a = Analysis(
     ['webapp/app.py'],
     pathex=[str(Path('.').resolve())],
-    binaries=[],
-    datas=[
-        ('webapp/templates', 'templates'),
-        ('webapp/static',    'static'),
-        ('class_solver_v2.py', '.'),
-    ],
-    hiddenimports=[
-        'ortools',
-        'ortools.sat',
-        'ortools.sat.python',
-        'ortools.sat.python.cp_model',
-        'ortools.util.python.sorted_interval_list',
-        'pandas',
-        'numpy',
-        'flask',
-        'werkzeug',
-        'werkzeug.serving',
-        'jinja2',
-        'click',
-    ],
+    binaries=all_binaries,
+    datas=all_datas,
+    hiddenimports=all_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -52,7 +67,7 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    console=True,  # needs stdout for port reporting
+    console=True,
 )
 
 coll = COLLECT(
