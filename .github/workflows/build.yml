@@ -32,9 +32,7 @@ jobs:
         run: cd electron && npm install
 
       - name: Build macOS DMG
-        run: cd electron && npm run dist:mac
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cd electron && npx electron-builder --mac --publish never
 
       - name: Upload DMG artifacts
         uses: actions/upload-artifact@v4
@@ -67,9 +65,7 @@ jobs:
         run: cd electron && npm install
 
       - name: Build Windows installer
-        run: cd electron && npm run dist:win
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: cd electron && npx electron-builder --win --publish never
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
