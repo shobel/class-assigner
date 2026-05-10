@@ -32,9 +32,26 @@ jobs:
         working-directory: electron
         run: npm install
 
-      - name: Build macOS DMG
+      - name: Import Apple Developer certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          echo "$APPLE_CERTIFICATE" | base64 --decode > /tmp/certificate.p12
+          security create-keychain -p actions_keychain /tmp/build.keychain
+          security default-keychain -s /tmp/build.keychain
+          security unlock-keychain -p actions_keychain /tmp/build.keychain
+          security import /tmp/certificate.p12 -k /tmp/build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k actions_keychain /tmp/build.keychain
+          rm /tmp/certificate.p12
+
+      - name: Build and sign macOS DMG
         working-directory: electron
         run: npx electron-builder --mac --publish never
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       - name: List dist folder
         run: ls -lh dist/
