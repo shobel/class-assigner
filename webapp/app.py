@@ -150,7 +150,7 @@ def save_school_year_data(school_year, data):
     """Save data for a specific school year"""
     file_path = get_school_year_file(school_year)
     with open(file_path, 'w') as f:
-        json.dump(data, f, indent=2)
+        json.dump(data, f, indent=2, allow_nan=False)
 
 
 def migrate_legacy_data(current_year):
@@ -309,6 +309,13 @@ DEFAULT_CONFIG = {
             "weight": 30,
             "enabled": True,
             "icon": "🤝"
+        },
+        {
+            "name": "teacher_uniqueness",
+            "display_name": "Teacher uniqueness",
+            "type": "hard_toggle",
+            "enabled": True,
+            "icon": "👩‍🏫"
         }
     ],
     "friend_weight": 30,  # Kept for backward compatibility
@@ -353,11 +360,18 @@ def load_config():
     if 'properties' in config:
         existing_names = {p['name'] for p in config['properties']}
         if 'friends' not in existing_names:
-            # Add friends property from default config
             friends_prop = next((p for p in DEFAULT_CONFIG['properties'] if p['name'] == 'friends'), None)
             if friends_prop:
                 config['properties'].append(friends_prop.copy())
-                save_config(config)  # Save the migration
+                save_config(config)
+
+        # Ensure teacher_uniqueness property exists (migration)
+        existing_names = {p['name'] for p in config['properties']}
+        if 'teacher_uniqueness' not in existing_names:
+            tu_prop = next((p for p in DEFAULT_CONFIG['properties'] if p['name'] == 'teacher_uniqueness'), None)
+            if tu_prop:
+                config['properties'].append(tu_prop.copy())
+                save_config(config)
 
     # Auto-fill school year if not set
     if not config.get('school_year'):
@@ -676,7 +690,9 @@ def api_grade_students(grade_id):
         'num_classes': grade_data.get('num_classes', 5),
         'min_students': grade_data.get('min_students', 18),
         'max_students': grade_data.get('max_students', 26),
-        'enforce_class_size': grade_data.get('enforce_class_size', False)  # Default to soft constraint
+        'enforce_class_size': grade_data.get('enforce_class_size', False),
+        'teachers': grade_data.get('teachers', []),
+        'available_teachers': grade_data.get('available_teachers', []),
     })
 
 @app.route('/api/grades/<grade_id>/assignments', methods=['GET', 'POST'])
@@ -700,8 +716,9 @@ def api_grade_assignments(grade_id):
         data = request.json
         if 'assignments' in data:
             students_data[grade_name]['assignments'] = data['assignments']
-            # Every explicit save becomes the new revert point
-            students_data[grade_name]['solver_baseline'] = data['assignments'].copy()
+            # Only update revert point on explicit saves, not auto-saves from drag/drop
+            if data.get('update_baseline', False):
+                students_data[grade_name]['solver_baseline'] = data['assignments'].copy()
             save_school_year_data(active_year, students_data)
             return jsonify({'status': 'success'})
         return jsonify({'error': 'No assignments data provided'}), 400
@@ -715,6 +732,7 @@ def api_grade_assignments(grade_id):
         'solver_status': grade_data.get('solver_status'),
         'solver_elapsed': grade_data.get('solver_elapsed'),
         'solver_combinations': grade_data.get('solver_combinations'),
+        'class_names': grade_data.get('class_names', {}),
     })
 
 
@@ -747,6 +765,28 @@ def api_revert_assignments(grade_id):
     return jsonify({'status': 'success', 'assignments': solver_baseline})
 
 
+@app.route('/api/grades/<grade_id>/class-names', methods=['POST'])
+def api_save_class_names(grade_id):
+    """Save custom class names"""
+    config = load_config()
+    active_year = config.get('active_school_year', config['school_year'])
+    students_data = load_school_year_data(active_year)
+
+    grade_name = None
+    for name in students_data.keys():
+        if name.lower().replace(' ', '_') == grade_id:
+            grade_name = name
+            break
+
+    if not grade_name:
+        return jsonify({'error': 'Grade not found'}), 404
+
+    data = request.json or {}
+    students_data[grade_name]['class_names'] = data.get('class_names', {})
+    save_school_year_data(active_year, students_data)
+    return jsonify({'status': 'success'})
+
+
 @app.route('/api/grades/<grade_id>/settings', methods=['POST'])
 def api_update_grade_settings(grade_id):
     """Update grade settings (num_classes, min/max students)"""
@@ -774,6 +814,10 @@ def api_update_grade_settings(grade_id):
         students_data[grade_name]['max_students'] = data['max_students']
     if 'enforce_class_size' in data:
         students_data[grade_name]['enforce_class_size'] = data['enforce_class_size']
+    if 'teachers' in data:
+        students_data[grade_name]['teachers'] = data['teachers']
+    if 'available_teachers' in data:
+        students_data[grade_name]['available_teachers'] = data['available_teachers']
 
     save_school_year_data(active_year, students_data)
     return jsonify({'status': 'success'})
@@ -1022,6 +1066,12 @@ def api_assign(grade_id):
         # Get properties config
         properties_config = config.get('properties', [])
 
+        # Get teacher uniqueness setting
+        teacher_uniqueness_prop = next((p for p in properties_config if p.get('name') == 'teacher_uniqueness'), None)
+        enforce_teacher_uniqueness = teacher_uniqueness_prop and teacher_uniqueness_prop.get('enabled', True)
+        available_teachers = grade_data.get('available_teachers', []) if enforce_teacher_uniqueness else []
+        teachers = []  # legacy static mode no longer used when available_teachers present
+
         # Convert to CSV format for solver
         # Use absolute paths to avoid issues with directory changes
         temp_input = (DATA_DIR / f"temp_{grade_id}_input.csv").resolve()
@@ -1045,7 +1095,8 @@ def api_assign(grade_id):
                 min_students=min_students,
                 max_students=max_students,
                 enforce_class_size=enforce_class_size,
-                properties_config=properties_config
+                properties_config=properties_config,
+                available_teachers=available_teachers,
             )
             print(f"Solver completed: {solver_result}")
         except Exception as solver_error:
@@ -1058,19 +1109,22 @@ def api_assign(grade_id):
         if not temp_output.exists():
             raise Exception(f"Solver did not produce output for {num_classes} classes. Check server logs for details.")
 
-        # Read results
+        # Read results — replace NaN with None so JSON serializes as null not NaN
         results_df = pd.read_csv(temp_output)
-        assignments = results_df.to_dict('records')
+        assignments = results_df.where(pd.notnull(results_df), None).to_dict('records')
 
         combinations = format_combinations(len(students), num_classes)
 
         # Save assignments back to school year data
-        # Store both solver baseline and current assignments
         students_data[grade_name]['assignments'] = assignments
         students_data[grade_name]['solver_baseline'] = assignments.copy()
         students_data[grade_name]['solver_status'] = solver_result.get('status') if solver_result else None
         students_data[grade_name]['solver_elapsed'] = solver_result.get('elapsed') if solver_result else None
         students_data[grade_name]['solver_combinations'] = combinations
+        # Save auto-assigned teachers if the solver produced them
+        teacher_assignments = solver_result.get('teacher_assignments', []) if solver_result else []
+        if teacher_assignments:
+            students_data[grade_name]['teachers'] = teacher_assignments
         save_school_year_data(active_year, students_data)
 
         # Clean up temp files

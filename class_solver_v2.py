@@ -5,12 +5,39 @@ Added feature: Students can list other students they CANNOT be placed with.
 This is a HARD constraint - incompatible students will never be in same class.
 """
 
+import ast
 import random
 import time
 from collections import Counter, defaultdict
 
 import pandas as pd
 from ortools.sat.python import cp_model
+
+
+def parse_previous_teachers(prev):
+    """Parse previous_teachers from any storage format into a list of name strings.
+
+    Handles:
+      - Python list:  ["Smith", "Jones"]
+      - JSON/repr:    "['Smith', 'Jones']"
+      - Pipe-sep:     "Smith|Jones"
+      - Single name:  "Smith"
+    """
+    if not prev:
+        return []
+    if isinstance(prev, list):
+        return [t.strip() for t in prev if t.strip()]
+    s = str(prev).strip()
+    # Python list repr written by pandas e.g. "['Smith', 'Jones']"
+    if s.startswith("["):
+        try:
+            parsed = ast.literal_eval(s)
+            if isinstance(parsed, list):
+                return [t.strip() for t in parsed if t.strip()]
+        except (ValueError, SyntaxError):
+            pass
+    # Pipe-separated or single value
+    return [t.strip() for t in s.split("|") if t.strip()]
 
 
 NUM_STUDENTS = 90
@@ -150,7 +177,7 @@ def add_balance_penalties(model, x, students, penalties, n_classes, field, value
 
 def solve_classes(input_path="students_sample_v2.csv", output_path="class_assignments_v2.csv",
                   num_classes=None, min_students=None, max_students=None, enforce_class_size=False,
-                  properties_config=None):
+                  properties_config=None, teachers=None, available_teachers=None):
     """
     Solve class assignments with flexible constraints.
 
@@ -250,6 +277,53 @@ def solve_classes(input_path="students_sample_v2.csv", output_path="class_assign
 
     print(f"Incompatible constraints: {len(incompatible_pairs)} pairs must be separated")
 
+    # HARD CONSTRAINT: Teacher uniqueness
+    # Auto-assign mode: available_teachers is a flat list; solver picks which class each teacher gets
+    teacher_assignment = {}  # t[(j, c)] = 1 if teacher j assigned to class c
+    assigned_teachers_result = []  # filled after solve
+
+    if available_teachers:
+        n_teachers = len(available_teachers)
+        for j in range(n_teachers):
+            for c in range(n_classes):
+                teacher_assignment[(j, c)] = model.NewBoolVar(f"t_{j}_c{c}")
+
+        # Each teacher in exactly one class
+        for j in range(n_teachers):
+            model.Add(sum(teacher_assignment[(j, c)] for c in range(n_classes)) == 1)
+
+        # Each class has at most one teacher
+        for c in range(n_classes):
+            model.Add(sum(teacher_assignment[(j, c)] for j in range(n_teachers)) <= 1)
+
+        # Teacher uniqueness: student can't be in a class with a teacher they've had
+        blocked = 0
+        for i, student in enumerate(students):
+            prev = student.get("previous_teachers", "")
+            if not prev:
+                continue
+            prev_list = parse_previous_teachers(prev)
+            for j, teacher in enumerate(available_teachers):
+                if teacher and teacher in prev_list:
+                    for c in range(n_classes):
+                        model.Add(teacher_assignment[(j, c)] + x[(i, c)] <= 1)
+                        blocked += 1
+        print(f"Teacher auto-assign: {n_teachers} teachers, {blocked} uniqueness links")
+
+    elif teachers:
+        # Legacy: static class-indexed teachers list
+        blocked = 0
+        for i, student in enumerate(students):
+            prev = student.get("previous_teachers", "")
+            if not prev:
+                continue
+            prev_list = parse_previous_teachers(prev)
+            for c_idx, teacher in enumerate(teachers):
+                if teacher and teacher in prev_list:
+                    model.Add(x[(i, c_idx)] == 0)
+                    blocked += 1
+        print(f"Teacher uniqueness: blocked {blocked} student-class assignments")
+
     # Soft balance constraints - apply dynamically based on config
     if properties_config:
         print("\nApplying balance constraints from config:")
@@ -260,7 +334,11 @@ def solve_classes(input_path="students_sample_v2.csv", output_path="class_assign
 
             prop_name = prop['name']
             prop_type = prop.get('type', 'categorical')
-            weight = prop.get('weight', 50)
+            # Hard constraints use a dominant weight; soft use the user-defined value
+            if prop.get('constraint') == 'hard':
+                weight = 300
+            else:
+                weight = prop.get('weight', 50)
 
             # Skip relationship types (friends handled separately)
             if prop_type == 'relationship':
@@ -367,6 +445,15 @@ def solve_classes(input_path="students_sample_v2.csv", output_path="class_assign
             hint = "Check class size settings or incompatible pair constraints."
         raise Exception(f"No valid assignment found ({details}). {hint}")
 
+    # Extract teacher-class assignments
+    if available_teachers and teacher_assignment:
+        assigned_teachers_result = [""] * n_classes
+        for j, teacher in enumerate(available_teachers):
+            for c in range(n_classes):
+                if solver.Value(teacher_assignment[(j, c)]) == 1:
+                    assigned_teachers_result[c] = teacher
+        print(f"Teacher assignments: {assigned_teachers_result}")
+
     assignments = []
     class_to_students = defaultdict(list)
 
@@ -400,6 +487,7 @@ def solve_classes(input_path="students_sample_v2.csv", output_path="class_assign
         'elapsed': round(elapsed, 2),
         'objective': solver.ObjectiveValue(),
         'friend_satisfaction': round(friend_satisfaction, 3),
+        'teacher_assignments': assigned_teachers_result,  # class-indexed list, empty if not used
     }
 
 

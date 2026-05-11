@@ -3,6 +3,11 @@
 let currentGrade = null;
 let currentScreen = "welcome";
 let currentStudentTab = "roster"; // roster, friendships, incompatibilities
+
+// Assignment filter / display state (persists across card re-renders)
+window.assignmentSearch = "";
+window.assignmentFilterFlags = new Set();
+window.cleanView = false;
 let grades = [];
 let config = {
   enabled: {
@@ -292,8 +297,13 @@ function selectGrade(gradeId) {
   window.currentAssignments = null;
   window.currentStudents = null;
   window.solverBaseline = null;
+  window.classNames = {};
   window.hasUnsavedChanges = false;
   window.editMode = false;
+  window.assignmentSearch = "";
+  window.assignmentFilterFlags = new Set();
+  window.cleanView = false;
+  document.body.classList.remove("clean-view");
   renderGradeNav();
   showScreen("students");
 }
@@ -317,6 +327,79 @@ function syncGradeStudentCount() {
 
 // Grade settings modal
 let currentGradeSettings = null;
+
+// Teacher bar (shown between grade title and tabs on all grade screens)
+function renderTeacherBar(teachers) {
+  const list = (teachers || []).filter(t => t && t.trim());
+  return `
+    <div id="teacherBar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
+      ${list.map(t => {
+        const initials = t.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+        return `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px 4px 6px;background:var(--bg-2);border:1px solid var(--line);border-radius:20px;font-size:12px;font-weight:500;">
+          <span class="avatar t" style="width:20px;height:20px;font-size:8px;flex-shrink:0;">${initials}</span>
+          ${t}
+          <button onclick="removeGradeTeacher('${t.replace(/'/g, "\\'")}')" style="background:none;border:none;cursor:pointer;color:var(--ink-4);padding:0;font-size:13px;line-height:1;margin-left:2px;" title="Remove">×</button>
+        </span>`;
+      }).join('')}
+      <button class="btn ghost sm" id="addTeacherBtn" onclick="startAddGradeTeacher(this)">+ Add teacher</button>
+    </div>
+  `;
+}
+
+function startAddGradeTeacher(btn) {
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.placeholder = 'Teacher name';
+  input.style.cssText = 'height:28px;padding:0 10px;border:1px solid var(--terra);border-radius:20px;font:inherit;font-size:12px;outline:none;background:var(--panel);color:var(--ink);width:160px;';
+  btn.replaceWith(input);
+  input.focus();
+
+  const finish = async () => {
+    const name = input.value.trim();
+    if (name) await addGradeTeacher(name);
+    else showScreen(document.querySelector('.grade-tab.on') ? 'students' : 'results');
+  };
+  input.addEventListener('blur', finish);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') input.blur();
+    if (e.key === 'Escape') { input.value = ''; input.blur(); }
+  });
+}
+
+async function addGradeTeacher(name) {
+  if (!currentGrade) return;
+  const updated = [...(window.currentAvailableTeachers || []), name];
+  window.currentAvailableTeachers = updated;
+  await fetch(`/api/grades/${currentGrade.id}/settings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ available_teachers: updated }),
+  });
+  const bar = document.getElementById('teacherBar');
+  if (bar) bar.outerHTML = renderTeacherBar(updated);
+}
+
+async function removeGradeTeacher(name) {
+  if (!currentGrade) return;
+  const assignedToClass = (window.currentTeachers || []).includes(name);
+  if (assignedToClass) {
+    showNotice(`${name} is assigned to a class — unassign them first`, 'error');
+    return;
+  }
+  const updated = (window.currentAvailableTeachers || []).filter(t => t !== name);
+  window.currentAvailableTeachers = updated;
+  await fetch(`/api/grades/${currentGrade.id}/settings`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ available_teachers: updated }),
+  });
+  const bar = document.getElementById('teacherBar');
+  if (bar) bar.outerHTML = renderTeacherBar(updated);
+}
+
+window.startAddGradeTeacher = startAddGradeTeacher;
+window.addGradeTeacher = addGradeTeacher;
+window.removeGradeTeacher = removeGradeTeacher;
 
 async function showGradeSettings(gradeId) {
   const grade = grades.find((g) => g.id === gradeId);
@@ -380,6 +463,7 @@ async function showGradeSettings(gradeId) {
           <div id="classSizeFeasibilityWarning" style="display:none; margin-top:8px; padding:8px 10px; background:var(--rose-soft); border-radius:5px; font-size:11px; color:var(--terra-ink); line-height:1.5;"></div>
         </div>
       </div>
+
     </div>
   `;
 
@@ -412,6 +496,7 @@ function checkClassSizeFeasibility() {
   }
 }
 window.checkClassSizeFeasibility = checkClassSizeFeasibility;
+
 
 function closeGradeSettings() {
   document.getElementById("gradeSettingsModal").classList.remove("open");
@@ -472,8 +557,8 @@ async function saveGradeSettings() {
       closeGradeSettings();
       await loadGrades();
       // Refresh current screen to show updated settings
-      if (currentScreen === "results") {
-        await showScreen("results");
+      if (currentScreen === "results" || currentScreen === "students") {
+        await showScreen(currentScreen);
       }
     } else {
       showNotice("Failed to save settings", "error");
@@ -486,6 +571,38 @@ async function saveGradeSettings() {
 
 // Show screen
 async function showScreen(screen) {
+  // Guard: navigating away from the grade screen with unsaved changes
+  const onGradeScreen = currentScreen === "results" || currentScreen === "students";
+  const leavingGradeScreen = screen !== "results" && screen !== "students";
+  if (onGradeScreen && leavingGradeScreen && window.hasUnsavedChanges) {
+    const action = await showSavePrompt("Save your manual changes before leaving?");
+    if (action === "cancel") return;
+    if (action === "save") {
+      try {
+        const res = await fetch(`/api/grades/${currentGrade.id}/assignments`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assignments: window.currentAssignments, update_baseline: true }),
+        });
+        if (res.ok) {
+          window.hasUnsavedChanges = false;
+          window.editMode = false;
+          showNotice("Changes saved!");
+        } else {
+          showNotice("Failed to save changes", "error");
+          return;
+        }
+      } catch (e) {
+        showNotice("Failed to save changes", "error");
+        return;
+      }
+    }
+    if (action === "discard") {
+      window.hasUnsavedChanges = false;
+      window.editMode = false;
+    }
+  }
+
   currentScreen = screen;
 
   // Update nav active state
@@ -524,10 +641,8 @@ async function showScreen(screen) {
     content = renderConfigScreen();
   } else if (screen === "school-config") {
     content = renderSchoolConfigScreen();
-  } else if (screen === "students") {
+  } else if (screen === "students" || screen === "results") {
     content = await renderStudentsScreen();
-  } else if (screen === "results") {
-    content = await renderResultsScreen();
   }
 
   // Update content but preserve detail panel
@@ -536,6 +651,10 @@ async function showScreen(screen) {
     main.appendChild(detailPanel);
   }
   renderIcons();
+  // Re-apply any active search/filter after re-renders
+  if (window.assignmentSearch || (window.assignmentFilterFlags && window.assignmentFilterFlags.size > 0)) {
+    requestAnimationFrame(applyAssignmentFilters);
+  }
 }
 
 // Welcome Screen
@@ -760,33 +879,216 @@ function renderWeightSliders() {
     math: "Balance high / medium / low math levels.",
     reading: "Balance reading proficiency tiers.",
     friends: "Keep friends together when possible (soft constraint).",
+    teacher_uniqueness: "Students are never assigned to a teacher they've had before.",
   };
 
-  return config.properties
-    .map((prop) => {
-      const weight = Math.round(prop.weight / 20); // Convert 0-100 to 0-5 scale
-      const enabled = prop.enabled !== false; // Default to true if not specified
-      return `
+  const renderRow = (prop, isCustom) => {
+    const weight = Math.round(prop.weight / 20);
+    const enabled = prop.enabled !== false;
+    const isHard = isCustom && prop.constraint === "hard";
+    const isHardToggle = prop.type === "hard_toggle";
+    const typeDesc = isCustom
+      ? (prop.type === "boolean" ? "Yes / No" : (prop.values || []).join(", "))
+      : (descriptions[prop.name] || "");
+
+    return `
     <div style="padding: 12px 0; border-bottom: 1px solid var(--line-soft); ${!enabled ? "opacity: 0.5;" : ""}">
-      <div style="display: grid; grid-template-columns: 40px 160px 1fr 80px; gap: 12px; align-items: center;">
+      <div style="display: grid; grid-template-columns: 40px 160px 1fr 80px${isCustom ? " 24px" : ""}; gap: 12px; align-items: center;">
         <label class="toggle">
           <input type="checkbox" ${enabled ? "checked" : ""} onchange="toggleProperty('${prop.name}', this.checked)">
           <span class="toggle-slider"></span>
         </label>
         <div>
           <div style="font-weight: 500; font-size: 13px; color: var(--terra);">${prop.display_name}</div>
-          <div style="font-size: 11px; color: var(--ink-3);">${descriptions[prop.name] || ""}</div>
+          <div style="font-size: 11px; color: var(--ink-3); display:flex; align-items:center; gap:6px;">
+            <span>${typeDesc}</span>
+            ${isCustom ? `<span onclick="toggleCustomConstraint('${prop.name}')" style="cursor:pointer; padding:1px 5px; border-radius:3px; font-size:9px; font-weight:700; text-transform:uppercase; background:${isHard ? "var(--rose)" : "var(--line-soft)"}; color:${isHard ? "#fff" : "var(--ink-3)"};">${isHard ? "Hard" : "Soft"}</span>` : ""}
+          </div>
         </div>
-        <input type="range" min="0" max="5" step="1" class="slider" value="${weight}" onchange="updateWeight('${prop.name}', this.value)" ${!enabled ? "disabled" : ""}>
-        <div style="font-family: var(--t-mono); font-size: 10px; text-align: right; text-transform: uppercase; color: var(--terra);">
-          ${["Off", "Low", "Mild", "Medium", "High", "Critical"][weight]}
+        ${isHardToggle ? (() => {
+          const hasTeachers = (grades || []).some(g => g.teachers && g.teachers.some(t => t));
+          return `
+          <div style="font-size:11px; color:var(--ink-3); font-style:italic;">
+            Hard constraint — students never repeat a teacher${!hasTeachers ? ' <span style="color:var(--amber);font-style:normal;">· No teachers configured yet — set them in grade settings</span>' : ''}
+          </div>
+          <div></div>`;
+        })() : isHard ? `
+          <div style="font-size:11px; color:var(--ink-3); font-style:italic;">Always enforced at maximum priority</div>
+          <div></div>
+        ` : `
+          <input type="range" min="0" max="5" step="1" class="slider" value="${weight}" onchange="updateWeight('${prop.name}', this.value)" ${!enabled ? "disabled" : ""}>
+          <div style="font-family: var(--t-mono); font-size: 10px; text-align: right; text-transform: uppercase; color: var(--terra);">
+            ${["Off", "Low", "Mild", "Medium", "High", "Critical"][weight]}
+          </div>
+        `}
+        ${isCustom ? `<button onclick="deleteCustomAttribute('${prop.name.replace(/'/g, "\\'")}')" title="Remove" style="background:none;border:none;cursor:pointer;color:var(--ink-3);font-size:16px;padding:0;line-height:1;align-self:center;">×</button>` : ""}
+      </div>
+    </div>`;
+  };
+
+  const builtinHtml = config.properties
+    .filter((p) => !p.custom)
+    .map((p) => renderRow(p, false))
+    .join("");
+
+  const customProps = config.properties.filter((p) => p.custom);
+  const customHtml = customProps.map((p) => renderRow(p, true)).join("");
+
+  return `
+    ${builtinHtml}
+    <div style="padding: 20px 0 8px; display:flex; align-items:center; justify-content:space-between;">
+      <span style="font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--ink-3);">Custom attributes</span>
+      <button class="btn ghost sm" onclick="openAddCustomAttributeModal()">+ Add</button>
+    </div>
+    ${customProps.length === 0 ? `<div style="font-size:12px; color:var(--ink-3); padding-bottom:12px;">No custom attributes yet. Add one to track school-specific factors.</div>` : customHtml}
+  `;
+}
+
+function openAddCustomAttributeModal() {
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:1000;display:flex;align-items:center;justify-content:center";
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.innerHTML = `
+    <div style="background:var(--panel);border-radius:12px;width:440px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.18)">
+      <div style="padding:20px 24px 16px;border-bottom:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between">
+        <div style="font-weight:600;font-size:15px">Add custom attribute</div>
+        <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--ink-3);padding:0 4px">×</button>
+      </div>
+      <div style="padding:20px 24px;display:flex;flex-direction:column;gap:16px">
+
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">Attribute name</label>
+          <input id="custom-attr-name" type="text" placeholder="e.g. Language Group" autocomplete="off"
+            style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line-soft);border-radius:6px;font-size:13px;background:var(--bg-2);color:var(--ink);outline:none">
         </div>
+
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">Type</label>
+          <div class="segmented">
+            <button class="seg active" data-field="custom-type" data-value="boolean">Yes / No</button>
+            <button class="seg" data-field="custom-type" data-value="categorical">Multiple values</button>
+          </div>
+        </div>
+
+        <div id="custom-values-row" style="display:none">
+          <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">Values <span style="font-weight:400;">(comma-separated)</span></label>
+          <input id="custom-attr-values" type="text" placeholder="e.g. Spanish, Mandarin, None" autocomplete="off"
+            style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line-soft);border-radius:6px;font-size:13px;background:var(--bg-2);color:var(--ink);outline:none">
+        </div>
+
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">Constraint</label>
+          <div class="segmented">
+            <button class="seg active" data-field="custom-constraint" data-value="soft">Soft — balance by importance</button>
+            <button class="seg" data-field="custom-constraint" data-value="hard">Hard — always enforced</button>
+          </div>
+        </div>
+
+        <div id="custom-weight-row">
+          <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">Importance</label>
+          <div style="display:grid;grid-template-columns:1fr 70px;gap:8px;align-items:center">
+            <input id="custom-attr-weight" type="range" min="1" max="5" step="1" class="slider" value="3"
+              oninput="document.getElementById('custom-weight-label').textContent=['','Low','Mild','Medium','High','Critical'][this.value]">
+            <div id="custom-weight-label" style="font-family:var(--t-mono);font-size:10px;text-transform:uppercase;color:var(--terra);text-align:right">Medium</div>
+          </div>
+        </div>
+
+        <div id="custom-attr-error" style="font-size:12px;color:var(--rose);display:none"></div>
+      </div>
+      <div style="padding:16px 24px;border-top:1px solid var(--line-soft);display:flex;justify-content:flex-end;gap:8px">
+        <button class="btn ghost sm" onclick="this.closest('[style*=fixed]').remove()">Cancel</button>
+        <button class="btn sm" style="background:var(--terra);color:#fff;border-color:var(--terra)" onclick="submitAddCustomAttribute()">Add attribute</button>
       </div>
     </div>
-    `;
-    })
-    .join("");
+  `;
+
+  overlay.querySelectorAll(".seg[data-field]").forEach((btn) => {
+    btn.addEventListener("click", function () {
+      const field = this.dataset.field;
+      overlay.querySelectorAll(`.seg[data-field="${field}"]`).forEach((b) => b.classList.remove("active"));
+      this.classList.add("active");
+      if (field === "custom-type") {
+        document.getElementById("custom-values-row").style.display = this.dataset.value === "categorical" ? "block" : "none";
+      }
+      if (field === "custom-constraint") {
+        document.getElementById("custom-weight-row").style.display = this.dataset.value === "soft" ? "block" : "none";
+      }
+    });
+  });
+
+  document.body.appendChild(overlay);
+  document.getElementById("custom-attr-name").focus();
+  window._customAttrOverlay = overlay;
 }
+window.openAddCustomAttributeModal = openAddCustomAttributeModal;
+
+async function submitAddCustomAttribute() {
+  const overlay = window._customAttrOverlay;
+  if (!overlay) return;
+
+  const displayName = document.getElementById("custom-attr-name").value.trim();
+  const errorEl = document.getElementById("custom-attr-error");
+  errorEl.style.display = "none";
+
+  if (!displayName) {
+    errorEl.textContent = "Please enter an attribute name.";
+    errorEl.style.display = "block";
+    return;
+  }
+
+  const name = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  if (config.properties.find((p) => p.name === name)) {
+    errorEl.textContent = `An attribute named "${name}" already exists.`;
+    errorEl.style.display = "block";
+    return;
+  }
+
+  const type = overlay.querySelector('.seg.active[data-field="custom-type"]')?.dataset.value || "boolean";
+  const constraint = overlay.querySelector('.seg.active[data-field="custom-constraint"]')?.dataset.value || "soft";
+  const weight = parseInt(document.getElementById("custom-attr-weight").value) * 20;
+
+  const newProp = { name, display_name: displayName, type, constraint, weight, enabled: true, custom: true };
+
+  if (type === "categorical") {
+    const valuesStr = document.getElementById("custom-attr-values").value.trim();
+    const values = valuesStr.split(",").map((v) => v.trim()).filter(Boolean);
+    if (values.length === 0) {
+      errorEl.textContent = "Please enter at least one value.";
+      errorEl.style.display = "block";
+      return;
+    }
+    newProp.values = values;
+  }
+
+  config.properties.push(newProp);
+  await fetch("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) });
+  overlay.remove();
+  showScreen("config");
+  showNotice(`"${displayName}" attribute added.`);
+}
+window.submitAddCustomAttribute = submitAddCustomAttribute;
+
+async function deleteCustomAttribute(name) {
+  const prop = config.properties.find((p) => p.name === name);
+  if (!prop) return;
+  const ok = await showConfirm(`Remove "${prop.display_name}" attribute?`);
+  if (!ok) return;
+  config.properties = config.properties.filter((p) => p.name !== name);
+  await fetch("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) });
+  showScreen("config");
+  showNotice(`"${prop.display_name}" removed.`);
+}
+window.deleteCustomAttribute = deleteCustomAttribute;
+
+async function toggleCustomConstraint(name) {
+  const prop = config.properties.find((p) => p.name === name);
+  if (!prop) return;
+  prop.constraint = prop.constraint === "hard" ? "soft" : "hard";
+  await fetch("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) });
+  showScreen("config");
+}
+window.toggleCustomConstraint = toggleCustomConstraint;
 
 async function updateWeight(key, value) {
   const weight = parseInt(value) * 20; // Convert 0-5 scale back to 0-100
@@ -856,29 +1158,49 @@ async function toggleProperty(propertyName, enabled) {
 
 // Students Screen
 async function renderStudentsScreen() {
-  // Fetch students for current grade
   const res = await fetch(`/api/grades/${currentGrade.id}/students`);
   const data = await res.json();
   const students = data.students || [];
 
-  // Also check if assignments exist
-  const assignRes = await fetch(`/api/grades/${currentGrade.id}/assignments`);
-  const assignData = await assignRes.json();
-  const hasAssignments =
-    assignData.assignments && assignData.assignments.length > 0;
+  // Handle in-memory assignments for unsaved edit mode changes
+  let assignments, assignData;
+  if (window.hasUnsavedChanges && window.currentAssignments) {
+    assignments = window.currentAssignments;
+    assignData = {
+      assignments,
+      solver_baseline: window.solverBaseline,
+      num_classes: window.numClasses,
+      class_names: window.classNames || {},
+    };
+  } else {
+    const assignRes = await fetch(`/api/grades/${currentGrade.id}/assignments`);
+    assignData = await assignRes.json();
+    assignments = assignData.assignments || [];
+  }
 
-  // Always reset globals for the current grade — never carry over from a previous grade
-  window.currentAssignments = hasAssignments ? assignData.assignments : null;
-  window.solverBaseline = hasAssignments ? assignData.solver_baseline : null;
-  window.hasUnsavedChanges = false;
-  window.editMode = false;
+  const hasAssignments = assignments.length > 0;
+
+  // Set globals (don't overwrite in-memory assignment state when editing)
+  window.currentStudents = students;
+  window.currentTeachers = data.teachers || [];
+  window.currentAvailableTeachers = data.available_teachers || [];
+  if (!window.hasUnsavedChanges) {
+    window.currentAssignments = hasAssignments ? assignments : null;
+    window.solverBaseline = hasAssignments ? assignData.solver_baseline : null;
+    window.classNames = assignData.class_names || {};
+  }
 
   if (students.length === 0) {
     return `
       <div class="canvas">
         <div class="page-title">
-          <h1>${currentGrade.name} <span class="year-label">${config.active_school_year || config.school_year}</span></h1>
+          <h1 style="flex:1;">${currentGrade.name} <span class="year-label">${config.active_school_year || config.school_year}</span></h1>
+          <button onclick="showGradeInfoModal()" title="Legend & info"
+            style="width:28px;height:28px;border-radius:50%;border:1px solid var(--line);background:transparent;cursor:pointer;font-size:13px;color:var(--ink-3);display:flex;align-items:center;justify-content:center;flex-shrink:0;"
+            onmouseover="this.style.borderColor='var(--ink)';this.style.color='var(--ink)';"
+            onmouseout="this.style.borderColor='var(--line)';this.style.color='var(--ink-3)';">?</button>
         </div>
+        ${renderTeacherBar(window.currentAvailableTeachers)}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:600px;margin-top:8px">
           <div class="panel" style="cursor:pointer"
             onclick="document.getElementById('grade-csv-input').click()"
@@ -905,93 +1227,104 @@ async function renderStudentsScreen() {
     `;
   }
 
-  // Calculate stats
+  // Stats
   const girls = students.filter((s) => s.gender === "g").length;
   const boys = students.filter((s) => s.gender === "b").length;
-  const iepCount = students.filter(
-    (s) => s.iep === true || s.iep === "true",
-  ).length;
-  const plan504Count = students.filter(
-    (s) => s["504"] === true || s["504"] === "true",
-  ).length;
-  const eslCount = students.filter(
-    (s) => s.esl === true || s.esl === "true",
-  ).length;
-  const gateCount = students.filter(
-    (s) => s.gate === true || s.gate === "true",
-  ).length;
+  const iepCount = students.filter((s) => s.iep === true || s.iep === "true").length;
+  const plan504Count = students.filter((s) => s["504"] === true || s["504"] === "true").length;
+  const eslCount = students.filter((s) => s.esl === true || s.esl === "true").length;
+  const gateCount = students.filter((s) => s.gate === true || s.gate === "true").length;
 
-  // Store students globally for detail panel
-  window.currentStudents = students;
+  const numClasses = data.num_classes;
+
+  // Boolean filter flags from config
+  const boolFlags = (config.properties || []).filter(
+    (p) => p.enabled && p.type === "boolean"
+  );
 
   return `
     <div class="canvas">
       <!-- Page Title -->
       <div class="page-title">
-        <h1>${currentGrade.name} <span class="year-label">${config.active_school_year || config.school_year}</span></h1>
+        <h1 style="flex:1;">${currentGrade.name} <span class="year-label">${config.active_school_year || config.school_year}</span></h1>
+        <button onclick="showGradeInfoModal()" title="Legend & info"
+          style="width:28px;height:28px;border-radius:50%;border:1px solid var(--line);background:transparent;cursor:pointer;font-size:13px;color:var(--ink-3);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.15s;"
+          onmouseover="this.style.borderColor='var(--ink)';this.style.color='var(--ink)';"
+          onmouseout="this.style.borderColor='var(--line)';this.style.color='var(--ink-3)';">?</button>
       </div>
 
-      <!-- Grade tabs -->
-      <div class="grade-tabs">
-        <button class="grade-tab on">
-          <em>Roster</em> <span class="gt-count">${students.length} students</span>
-        </button>
-        <button class="grade-tab" onclick="showScreen('results')">
-          Assignment <span class="gt-count">${hasAssignments ? `${assignData.num_classes} classes` : "not run"}</span>
-        </button>
-        <div class="grade-meta">
-          <button class="btn ghost" onclick="showImportModal()"><i data-lucide="upload" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Re‑import</button>
-          <button class="btn ghost" onclick="exportCSV()"><i data-lucide="download" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Export</button>
+      <!-- Teacher bar -->
+      ${renderTeacherBar(window.currentAvailableTeachers)}
+
+      <!-- Action toolbar -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+        <span style="font-size:12px;color:var(--ink-3);">${students.length} students</span>
+        ${hasAssignments ? `<span style="color:var(--line-soft);">·</span><span style="font-size:12px;color:var(--ink-3);">${numClasses} classes</span>` : ""}
+        <div style="flex:1;min-width:8px;"></div>
+        <button class="btn ghost" onclick="showImportModal()"><i data-lucide="upload" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Re‑import</button>
+        ${hasAssignments
+          ? `<button class="btn ghost" onclick="exportAssignmentCSV()"><i data-lucide="download" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Export</button>`
+          : `<button class="btn ghost" onclick="exportCSV()"><i data-lucide="download" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Export</button>`
+        }
+        <button class="btn terra" onclick="runAssignment()"><i data-lucide="play" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>${hasAssignments ? "Re-assign" : "Assign"}</button>
+      </div>
+
+      <!-- Content area -->
+      ${hasAssignments ? `
+        <!-- Search + filter bar -->
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:14px;flex-wrap:wrap;">
+          <input id="assignmentSearch" type="text" placeholder="Search students…"
+            oninput="filterAssignmentStudents(this.value)"
+            value="${(window.assignmentSearch || "").replace(/"/g, "&quot;")}"
+            style="height:30px;padding:0 10px;border:1px solid var(--line);border-radius:var(--rad);background:var(--panel);color:var(--ink);font:inherit;font-size:12px;width:180px;flex-shrink:0;">
+          ${boolFlags.map((p) => {
+            const label = p.display_name === "504 Plan" ? "504" : p.display_name;
+            const active = (window.assignmentFilterFlags || new Set()).has(p.name);
+            return `<button data-filter-flag="${p.name}" onclick="toggleAssignmentFilter('${p.name}')"
+              style="height:30px;padding:0 10px;font-size:11px;border:1px solid var(--line);border-radius:var(--rad);cursor:pointer;transition:all 0.1s;background:${active ? "var(--ink)" : "transparent"};color:${active ? "#fff" : "var(--ink-3)"};">${label}</button>`;
+          }).join("")}
+          <button id="clearFiltersBtn" onclick="clearAssignmentFilters()"
+            style="display:${(window.assignmentSearch || (window.assignmentFilterFlags && window.assignmentFilterFlags.size > 0)) ? "" : "none"};height:30px;padding:0 10px;font-size:11px;border:1px solid var(--line);border-radius:var(--rad);cursor:pointer;background:transparent;color:var(--rose);">× Clear</button>
+          <div style="flex:1;"></div>
+          <button id="cleanViewBtn" onclick="toggleCleanView()"
+            style="height:30px;padding:0 12px;font-size:11px;border:1px solid var(--line);border-radius:var(--rad);cursor:pointer;background:${window.cleanView ? "var(--ink)" : "transparent"};color:${window.cleanView ? "#fff" : "var(--ink-3)"};">Clean view</button>
         </div>
-      </div>
 
-      <!-- Quick stats strip -->
-      <div class="panel" style="margin-bottom: 16px;">
-        <div class="panel-b stats-strip">
-          <div class="stat">
-            <div class="stat-label">Total</div>
-            <div class="stat-value">${students.length}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">Girls</div>
-            <div class="stat-value">${girls}</div>
-            <div class="stat-sub">${Math.round((girls / students.length) * 100)}%</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">Boys</div>
-            <div class="stat-value">${boys}</div>
-            <div class="stat-sub">${Math.round((boys / students.length) * 100)}%</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">IEP</div>
-            <div class="stat-value">${iepCount}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">504 Plan</div>
-            <div class="stat-value">${plan504Count}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">ESL</div>
-            <div class="stat-value">${eslCount}</div>
-          </div>
-          <div class="stat">
-            <div class="stat-label">GATE</div>
-            <div class="stat-value">${gateCount}</div>
+        <!-- Assignment config strip -->
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px;padding:8px 12px;background:var(--bg-2);border:1px solid var(--line-soft);border-radius:var(--rad);font-size:12px;">
+          <span style="color:var(--ink-3);">Classes <strong style="color:var(--ink);margin-left:4px;">${numClasses}</strong></span>
+          <span style="color:var(--line);">|</span>
+          <span style="color:var(--ink-3);">Size <strong style="color:var(--ink);margin-left:4px;">${data.min_students}–${data.max_students}</strong><span style="color:var(--ink-4);margin-left:4px;">${data.enforce_class_size ? "hard" : "soft"}</span></span>
+          <span style="color:var(--line);">|</span>
+          <span style="color:var(--ink-3);">Students <strong style="color:var(--ink);margin-left:4px;">${students.length}</strong></span>
+          <button class="btn ghost sm" onclick="showGradeSettings('${currentGrade.id}')" style="margin-left:auto;">Edit</button>
+        </div>
+
+        ${renderAssignmentResults(assignments, numClasses, assignData)}
+      ` : `
+        <!-- Pre-assignment: flat roster for data entry -->
+        <div class="panel" style="margin-bottom: 16px;">
+          <div class="panel-b stats-strip">
+            <div class="stat"><div class="stat-label">Total</div><div class="stat-value">${students.length}</div></div>
+            <div class="stat"><div class="stat-label">Girls</div><div class="stat-value">${girls}</div><div class="stat-sub">${Math.round((girls / students.length) * 100)}%</div></div>
+            <div class="stat"><div class="stat-label">Boys</div><div class="stat-value">${boys}</div><div class="stat-sub">${Math.round((boys / students.length) * 100)}%</div></div>
+            <div class="stat"><div class="stat-label">IEP</div><div class="stat-value">${iepCount}</div></div>
+            <div class="stat"><div class="stat-label">504 Plan</div><div class="stat-value">${plan504Count}</div></div>
+            <div class="stat"><div class="stat-label">ESL</div><div class="stat-value">${eslCount}</div></div>
+            <div class="stat"><div class="stat-label">GATE</div><div class="stat-value">${gateCount}</div></div>
           </div>
         </div>
-      </div>
 
-      <!-- Secondary tabs -->
-      <div class="tabs">
-        <button class="tab ${currentStudentTab === "roster" ? "active" : ""}" onclick="switchStudentTab('roster')">Roster <span class="ct">${students.length}</span></button>
-        <button class="tab ${currentStudentTab === "friendships" ? "active" : ""}" onclick="switchStudentTab('friendships')">Friendships <span class="ct">${students.reduce((sum, s) => sum + (s.friends ? s.friends.split(",").filter((f) => f.trim()).length : 0), 0)}</span></button>
-        <button class="tab ${currentStudentTab === "incompatibilities" ? "active" : ""}" onclick="switchStudentTab('incompatibilities')">Incompatibilities <span class="ct">${students.reduce((sum, s) => sum + (s.incompatible ? s.incompatible.split(",").filter((f) => f.trim()).length : 0), 0)}</span></button>
-      </div>
+        <div class="tabs">
+          <button class="tab ${currentStudentTab === "roster" ? "active" : ""}" onclick="switchStudentTab('roster')">Roster <span class="ct">${students.length}</span></button>
+          <button class="tab ${currentStudentTab === "friendships" ? "active" : ""}" onclick="switchStudentTab('friendships')">Friendships <span class="ct">${students.reduce((sum, s) => sum + (s.friends ? s.friends.split(",").filter((f) => f.trim()).length : 0), 0)}</span></button>
+          <button class="tab ${currentStudentTab === "incompatibilities" ? "active" : ""}" onclick="switchStudentTab('incompatibilities')">Incompatibilities <span class="ct">${students.reduce((sum, s) => sum + (s.incompatible ? s.incompatible.split(",").filter((f) => f.trim()).length : 0), 0)}</span></button>
+        </div>
 
-      <!-- Tab content -->
-      <div id="studentTabContent">
-        ${renderStudentTabContent(students)}
-      </div>
+        <div id="studentTabContent">
+          ${renderStudentTabContent(students)}
+        </div>
+      `}
     </div>
   `;
 }
@@ -1010,28 +1343,33 @@ function renderStudentTabContent(students) {
 // Switch student tab
 function switchStudentTab(tab) {
   currentStudentTab = tab;
-  showScreen("students"); // Re-render
+  showScreen("students");
 }
 
 // Roster tab (original student list)
 function renderRosterTab(students) {
-  // Get all properties from config
-  const properties =
-    config.properties?.filter((p) => p.enabled && p.type !== "relationship") ||
-    [];
+  // Split properties: skip gender and hard_toggle; separate booleans (flags) from categoricals
+  const allProps = config.properties?.filter(
+    (p) => p.enabled && p.type !== "relationship" && p.type !== "hard_toggle" && p.name !== "gender"
+  ) || [];
+  const flagProps = allProps.filter((p) => p.type === "boolean");
+  const catProps  = allProps.filter((p) => p.type !== "boolean");
 
-  // Check if assignments exist
-  const hasAssignments =
-    window.currentAssignments && window.currentAssignments.length > 0;
+  const hasAssignments = window.currentAssignments && window.currentAssignments.length > 0;
+  const hasFlags = flagProps.length > 0;
 
-  // Build dynamic column headers
-  const numColumns = 2 + properties.length + (hasAssignments ? 1 : 0) + 1; // avatar + name + properties + [assigned class] + arrow
-  const gridColumns = `40px 1.5fr ${properties.map((p) => "100px").join(" ")} ${hasAssignments ? "100px " : ""}40px`;
+  // Grid: avatar | name | categorical cols | [flags] | [assigned] | arrow
+  const gridColumns = [
+    "40px",
+    "1.5fr",
+    ...catProps.map(() => "80px"),
+    ...(hasFlags ? ["110px"] : []),
+    ...(hasAssignments ? ["90px"] : []),
+    "40px",
+  ].join(" ");
 
   // Auto-sort by name
-  const sortedStudents = [...students].sort((a, b) =>
-    a.name.localeCompare(b.name),
-  );
+  const sortedStudents = [...students].sort((a, b) => a.name.localeCompare(b.name));
 
   return `
       <div class="panel">
@@ -1048,41 +1386,42 @@ function renderRosterTab(students) {
           <div class="student-row" style="padding: 7px 12px; background: var(--bg-2); cursor: default; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-3); font-weight: 500; display: grid; grid-template-columns: ${gridColumns}; gap: 10px;">
             <div></div>
             <div>Student</div>
-            ${properties.map((p) => `<div style="text-align:center">${p.display_name === "504 Plan" ? "504" : p.display_name}</div>`).join("")}
-            ${hasAssignments ? '<div style="text-align:center">Assigned</div>' : ""}
+            ${catProps.map((p) => `<div style="text-align:center">${p.display_name}</div>`).join("")}
+            ${hasFlags ? '<div>Flags</div>' : ""}
+            ${hasAssignments ? '<div style="text-align:center">Class</div>' : ""}
             <div></div>
           </div>
           <!-- Student rows -->
           ${sortedStudents
             .map((s) => {
-              const initials = s.name
-                .split(" ")
-                .map((n) => n[0])
-                .join("");
+              const initials = s.name.split(" ").map((n) => n[0]).join("");
 
-              // Find assigned class if exists
               let assignedClass = null;
               if (hasAssignments) {
-                const assignment = window.currentAssignments.find(
-                  (a) => a.name === s.name,
-                );
-                if (assignment) {
-                  assignedClass = assignment.assigned_class;
-                }
+                const assignment = window.currentAssignments.find((a) => a.name === s.name);
+                if (assignment) assignedClass = assignment.assigned_class;
               }
+
+              const flagsHtml = flagProps
+                .filter((p) => s[p.name] === true || s[p.name] === "true")
+                .map((p) => {
+                  const label = p.display_name === "504 Plan" ? "504" : p.display_name;
+                  return `<span class="chip" style="font-size:9px;">${label}</span>`;
+                })
+                .join("");
 
               return `
               <div class="student-row" data-student-name="${s.name.replace(/"/g, "&quot;")}" onclick="showStudentDetail(this.getAttribute('data-student-name'))" style="display: grid; grid-template-columns: ${gridColumns}; gap: 10px;">
                 <div class="avatar ${s.gender}">${initials}</div>
                 <div><div class="sn">${s.name}</div></div>
-                ${properties
+                ${catProps
                   .map((p) => {
-                    const value = s[p.name];
-                    const displayValue = formatPropertyValue(p, value);
+                    const displayValue = formatPropertyValue(p, s[p.name]);
                     return `<div style="text-align: center;">${displayValue}</div>`;
                   })
                   .join("")}
-                ${hasAssignments ? `<div style="text-align: center;"><span class="chip" style="font-size: 10px; background: var(--bg-3); font-weight: 600;">Class ${assignedClass || "—"}</span></div>` : ""}
+                ${hasFlags ? `<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">${flagsHtml || "—"}</div>` : ""}
+                ${hasAssignments ? `<div style="text-align: center;"><span class="chip" data-class-chip="${assignedClass}" style="font-size: 10px; background: var(--bg-3); font-weight: 600;">${assignedClass ? (window.classNames[assignedClass] || `Class ${assignedClass}`) : "—"}</span></div>` : ""}
                 <div style="display:flex; align-items:center; justify-content:flex-end;">
                   <span style="color: var(--ink-4);">›</span>
                 </div>
@@ -1358,6 +1697,8 @@ async function renderResultsScreen() {
 
   // Always keep currentStudents fresh for the detail panel
   window.currentStudents = students;
+  window.currentTeachers = data.teachers || [];
+  window.currentAvailableTeachers = data.available_teachers || [];
 
   return `
     <div class="canvas">
@@ -1365,6 +1706,9 @@ async function renderResultsScreen() {
       <div class="page-title">
         <h1>${currentGrade.name} <span class="year-label">${config.active_school_year || config.school_year}</span></h1>
       </div>
+
+      <!-- Teacher bar -->
+      ${renderTeacherBar(window.currentAvailableTeachers)}
 
       <!-- Grade tabs -->
       <div class="grade-tabs">
@@ -1380,31 +1724,16 @@ async function renderResultsScreen() {
         </div>
       </div>
 
-      <!-- Assignment info panel -->
-      <div class="panel" style="margin-bottom: 16px;">
-        <div class="panel-h">
-          <h3>Assignment Configuration</h3>
-          <button class="btn ghost sm" onclick="showGradeSettings('${currentGrade.id}')">Edit settings</button>
-        </div>
-        <div class="panel-b" style="display: flex; gap: 24px; padding: 16px;">
-          <div>
-            <div class="stat-label">Target classes</div>
-            <div class="stat-value" style="font-size: 24px;">${data.num_classes}</div>
-          </div>
-          <div>
-            <div class="stat-label">Class size range</div>
-            <div class="stat-value" style="font-size: 24px;">${data.min_students}–${data.max_students}</div>
-            <div class="stat-sub">${data.enforce_class_size ? "Hard constraint" : "Soft constraint"}</div>
-          </div>
-          <div>
-            <div class="stat-label">Students to assign</div>
-            <div class="stat-value" style="font-size: 24px;">${students.length}</div>
-          </div>
-          <div>
-            <div class="stat-label">Avg per class</div>
-            <div class="stat-value" style="font-size: 24px;">${(students.length / data.num_classes).toFixed(1)}</div>
-          </div>
-        </div>
+      <!-- Assignment config strip -->
+      <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px;padding:8px 12px;background:var(--bg-2);border:1px solid var(--line-soft);border-radius:var(--rad);font-size:12px;">
+        <span style="color:var(--ink-3);">Classes <strong style="color:var(--ink);margin-left:4px;">${data.num_classes}</strong></span>
+        <span style="color:var(--line);">|</span>
+        <span style="color:var(--ink-3);">Size <strong style="color:var(--ink);margin-left:4px;">${data.min_students}–${data.max_students}</strong><span style="color:var(--ink-4);margin-left:4px;">${data.enforce_class_size ? "hard" : "soft"}</span></span>
+        <span style="color:var(--line);">|</span>
+        <span style="color:var(--ink-3);">Students <strong style="color:var(--ink);margin-left:4px;">${students.length}</strong></span>
+        <span style="color:var(--line);">|</span>
+        <span style="color:var(--ink-3);">Avg <strong style="color:var(--ink);margin-left:4px;">${(students.length / data.num_classes).toFixed(1)}</strong></span>
+        <button class="btn ghost sm" onclick="showGradeSettings('${currentGrade.id}')" style="margin-left:auto;">Edit</button>
       </div>
 
       ${hasAssignments ? renderAssignmentResults(assignments, data.num_classes, assignData) : renderNoAssignments()}
@@ -1605,7 +1934,7 @@ function calculateBalanceStats(classesList) {
               .map(
                 (cls) => `
               <div style="flex: 1; text-align: center; font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em;">
-                Class ${cls.number}
+                ${window.classNames[cls.number] || `Class ${cls.number}`}
               </div>
             `,
               )
@@ -1736,7 +2065,7 @@ function calculateRelationshipStats(classesList) {
               .map(
                 (cls) => `
               <div style="flex: 1; text-align: center; font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em;">
-                Class ${cls.number}
+                ${window.classNames[cls.number] || `Class ${cls.number}`}
               </div>
             `,
               )
@@ -1870,7 +2199,98 @@ function calculateRelationshipStats(classesList) {
     `;
   }
 
-  return friendshipHTML + incompatibilityHTML;
+  // Teacher uniqueness stats
+  let teacherUniquenessHTML = "";
+  const teachers = window.currentTeachers || [];
+  const hasTeachers = teachers.some((t) => t && t.trim());
+
+  if (hasTeachers) {
+    // Helper to parse previous_teachers regardless of storage format
+    function parsePrevTeachers(prev) {
+      if (!prev) return [];
+      if (Array.isArray(prev)) return prev.map((t) => String(t).trim().toLowerCase()).filter(Boolean);
+      const s = String(prev).trim();
+      if (s.startsWith("[")) {
+        try {
+          const match = s.match(/['"]([^'"]+)['"]/g);
+          if (match) return match.map((m) => m.replace(/['"]/g, "").trim().toLowerCase()).filter(Boolean);
+        } catch (e) {}
+      }
+      return s.split(/[|,]/).map((t) => t.trim().toLowerCase()).filter(Boolean);
+    }
+
+    const violations = [];
+    classesList.forEach((cls) => {
+      const teacher = (teachers[cls.number - 1] || "").trim();
+      if (!teacher) return;
+      cls.students.forEach((s) => {
+        const prev = parsePrevTeachers(s.previous_teachers);
+        if (prev.includes(teacher.toLowerCase())) {
+          violations.push({ student: s.name, teacher, classNum: cls.number });
+        }
+      });
+    });
+
+    const totalStudents = classesList.reduce((sum, cls) => sum + cls.students.length, 0);
+    const violationCount = violations.length;
+    const qualityColor = violationCount === 0 ? "var(--terra)" : "var(--rose)";
+    const qualityLabel = violationCount === 0 ? "Perfect" : "Violations";
+
+    teacherUniquenessHTML = `
+      <div class="panel">
+        <div class="panel-h">
+          <div>
+            <h3>Teacher Uniqueness</h3>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="sub" style="color: ${qualityColor};">${qualityLabel}</span>
+              <span style="font-size: 12px; font-family: var(--t-mono); color: var(--ink-3);">${totalStudents} students</span>
+            </div>
+          </div>
+        </div>
+        <div class="panel-b" style="font-size: 12px;">
+          ${violationCount === 0 ? `
+            <div style="padding: 8px; background: var(--terra-soft); border-radius: 4px; border: 1px solid var(--terra);">
+              <div style="font-weight: 600; color: var(--terra);">All students have new teachers</div>
+              <div style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">No student is placed with a previously-had teacher</div>
+            </div>
+          ` : `
+            <div style="padding: 8px; background: var(--rose-soft); border-radius: 4px; border: 1px solid var(--rose); margin-bottom: 8px;">
+              <div style="font-weight: 600; color: var(--rose); margin-bottom: 4px;">${violationCount} student${violationCount !== 1 ? "s" : ""} placed with previous teacher</div>
+              ${violations.slice(0, 4).map((v) => `
+                <div style="font-size: 11px; color: var(--ink); margin-top: 4px;">
+                  • ${v.student} → ${v.teacher} (Class ${v.classNum})
+                </div>
+              `).join("")}
+              ${violations.length > 4 ? `<div style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">... and ${violations.length - 4} more</div>` : ""}
+            </div>
+          `}
+          <div style="display: flex; gap: 4px; margin-top: 8px;">
+            ${classesList.map((cls) => {
+              const teacher = (teachers[cls.number - 1] || "").trim();
+              if (!teacher) return `<div style="flex:1;text-align:center;font-size:10px;color:var(--ink-4);">—</div>`;
+              const classViolations = violations.filter((v) => v.classNum === cls.number).length;
+              const bg = classViolations > 0 ? "var(--rose-soft)" : "var(--bg-2)";
+              return `
+                <div style="flex:1;text-align:center;padding:4px 2px;background:${bg};border-radius:4px;">
+                  <div style="font-size:10px;font-weight:500;color:var(--ink);">${teacher.split(" ").map((n) => n[0]).join("").slice(0,2).toUpperCase()}</div>
+                  ${classViolations > 0 ? `<div style="font-size:9px;color:var(--rose);">${classViolations}✕</div>` : `<div style="font-size:9px;color:var(--terra);">✓</div>`}
+                </div>
+              `;
+            }).join("")}
+          </div>
+          <div style="display: flex; gap: 4px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line-soft);">
+            ${classesList.map((cls) => `
+              <div style="flex: 1; text-align: center; font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em;">
+                ${window.classNames[cls.number] || `Class ${cls.number}`}
+              </div>
+            `).join("")}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return friendshipHTML + incompatibilityHTML + teacherUniquenessHTML;
 }
 
 // Render assignment results (when assignments exist)
@@ -1889,6 +2309,7 @@ function renderAssignmentResults(assignments, numClasses, assignData) {
 
   // Store assignments globally for drag/drop
   window.currentAssignments = assignments;
+  selectedAssignmentStudent = null;
   // If no baseline exists yet, treat current assignments as baseline
   window.solverBaseline = assignData?.solver_baseline || assignments;
   window.numClasses = numClasses;
@@ -1925,16 +2346,19 @@ function renderAssignmentResults(assignments, numClasses, assignData) {
     ${
       hasBaseline
         ? `
-      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 16px; background: var(--bg-2); border-radius: var(--rad); border: 1px solid var(--line-soft);">
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 16px; background: ${window.hasUnsavedChanges ? "var(--amber-soft, var(--bg-2))" : "var(--bg-2)"}; border-radius: var(--rad); border: 1px solid ${window.hasUnsavedChanges ? "var(--amber, var(--line-soft))" : "var(--line-soft)"};">
         <div style="flex: 1; display: flex; align-items: center; gap: 12px;">
           <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
             <input type="checkbox" id="editModeToggle" ${window.editMode ? "checked" : ""} onchange="toggleEditMode(this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
             <span style="font-weight: 500; color: var(--ink);">Edit Mode</span>
           </label>
-          <span style="font-size: 11px; color: var(--ink-3);">Enable to manually adjust class assignments</span>
+          ${window.hasUnsavedChanges && !window.editMode
+            ? `<span style="font-size: 11px; color: var(--amber, var(--ink-3)); font-weight: 500;">● Unsaved changes</span>`
+            : `<span style="font-size: 11px; color: var(--ink-3);">Enable to manually adjust class assignments</span>`
+          }
         </div>
-        <div id="editModeActions" style="display: ${window.editMode ? "flex" : "none"}; gap: 8px;">
-          <button class="btn ghost sm" onclick="revertToSolver()" ${!window.hasUnsavedChanges ? "disabled" : ""}>Revert to last save</button>
+        <div id="editModeActions" style="display: ${window.editMode || window.hasUnsavedChanges ? "flex" : "none"}; gap: 8px;">
+          <button class="btn ghost sm" onclick="revertToSolver()" ${!window.hasUnsavedChanges ? "disabled" : ""}>Revert</button>
           <button class="btn primary sm" onclick="saveManualChanges()" ${!window.hasUnsavedChanges ? "disabled" : ""}>Save Changes</button>
         </div>
       </div>
@@ -1981,17 +2405,22 @@ function renderAssignmentResults(assignments, numClasses, assignData) {
     }
 
     <!-- Class Cards -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 16px; margin-bottom: 32px;" id="classCardsContainer">
+    <div style="display: flex; flex-direction: row; overflow-x: auto; gap: 16px; margin-bottom: 32px; padding-bottom: 8px;" id="classCardsContainer">
       ${classesList
         .map(
           (cls) => `
-        <div class="panel class-drop-zone" data-class-number="${cls.number}" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)">
+        <div class="panel class-drop-zone" data-class-number="${cls.number}" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" style="flex: 0 0 260px;">
           <div class="panel-h">
-            <h3>Class ${cls.number}</h3>
+            <div>
+              <h3 style="cursor:pointer;" title="Click to rename" onclick="startClassNameEdit(this, ${cls.number})">${window.classNames[cls.number] || `Class ${cls.number}`}</h3>
+              <div class="teacher-label" data-class-number="${cls.number}" onclick="startTeacherEdit(this, ${cls.number})" style="font-size:11px; color:${(window.currentTeachers[cls.number - 1]) ? "var(--ink-3)" : "var(--ink-4)"}; cursor:pointer; margin-top:1px;">
+                ${window.currentTeachers[cls.number - 1] || "+ Add teacher"}
+              </div>
+            </div>
             <span class="sub class-count">${cls.students.length} students</span>
           </div>
           <div class="panel-b" style="padding: 0;">
-            <div class="student-list" style="max-height: 400px; overflow-y: auto;">
+            <div class="student-list">
               ${cls.students
                 .map((s) => {
                   const initials = s.name
@@ -2004,15 +2433,33 @@ function renderAssignmentResults(assignments, numClasses, assignData) {
                        data-current-class="${cls.number}"
                        draggable="${window.editMode}"
                        ${window.editMode ? 'ondragstart="handleDragStart(event)" ondragend="handleDragEnd(event)"' : ""}
-                       style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line-soft); ${window.editMode ? "cursor: move;" : ""}">
+                       onclick="showStudentDetail('${s.name.replace(/'/g, "\\'")}')"
+                       onmouseenter="showAssignmentHighlight('${s.name.replace(/'/g, "\\'")}')"
+                       onmouseleave="clearAssignmentHighlight()"
+                       style="display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line-soft); cursor: pointer; ${window.editMode ? "cursor: move;" : ""}">
                     <div class="avatar ${s.gender}">${initials}</div>
-                    <div onclick="showStudentDetail('${s.name.replace(/'/g, "\\'")}'); event.stopPropagation();" style="flex: 1; cursor: pointer;">
+                    <div style="flex: 1; min-width: 0;">
                       <div class="sn">${s.name}</div>
+                      ${(() => {
+                        const catProps = (config.properties || []).filter(
+                          (p) => p.enabled && p.type !== "boolean" && p.type !== "relationship" && p.type !== "hard_toggle" && p.name !== "gender"
+                        );
+                        const chips = catProps
+                          .filter((p) => s[p.name] && s[p.name] !== "m" && s[p.name] !== "neutral")
+                          .map((p) => {
+                            const v = s[p.name];
+                            const label = `${p.display_name.slice(0, 3)} ${v === "h" ? "H" : "L"}`;
+                            const bg = v === "h" ? "var(--rose-soft)" : "var(--amber-soft, var(--bg-2))";
+                            return `<span class="chip" style="font-size:8px;padding:1px 4px;background:${bg};">${label}</span>`;
+                          }).join("");
+                        return chips ? `<div class="student-meta-chips" style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px;">${chips}</div>` : "";
+                      })()}
                     </div>
-                    <div style="display:flex; gap:4px;">
+                    <div class="student-flag-chips" style="display:flex; gap:3px; flex-shrink:0;">
                       ${s.iep ? '<span class="chip" style="font-size: 9px;">IEP</span>' : ""}
                       ${s["504"] ? '<span class="chip" style="font-size: 9px;">504</span>' : ""}
                       ${s.esl ? '<span class="chip" style="font-size: 9px;">ESL</span>' : ""}
+                      ${s.gate ? '<span class="chip" style="font-size: 9px;">GATE</span>' : ""}
                     </div>
                   </div>
                 `;
@@ -2046,6 +2493,114 @@ function renderNoAssignments() {
     </div>
   `;
 }
+
+async function saveClassName(classNumber, name) {
+  window.classNames[classNumber] = name;
+  await fetch(`/api/grades/${currentGrade.id}/class-names`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ class_names: window.classNames }),
+  });
+}
+
+function startClassNameEdit(el, classNumber) {
+  const current = window.classNames[classNumber] || `Class ${classNumber}`;
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = current;
+  input.style.cssText =
+    "font-size:inherit; font-weight:inherit; font-family:inherit; color:inherit; background:transparent; border:none; border-bottom:1px solid var(--terra); outline:none; width:160px; padding:0;";
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+
+  const finish = async () => {
+    const newName = input.value.trim() || `Class ${classNumber}`;
+    await saveClassName(classNumber, newName);
+    const h3 = document.createElement("h3");
+    h3.textContent = newName;
+    h3.style.cursor = "pointer";
+    h3.title = "Click to rename";
+    h3.onclick = () => startClassNameEdit(h3, classNumber);
+    input.replaceWith(h3);
+    // Also update roster chips
+    document.querySelectorAll(`[data-class-chip="${classNumber}"]`).forEach((chip) => {
+      chip.textContent = newName;
+    });
+  };
+
+  input.addEventListener("blur", finish);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") input.blur();
+    if (e.key === "Escape") {
+      input.value = window.classNames[classNumber] || `Class ${classNumber}`;
+      input.blur();
+    }
+  });
+}
+
+function startTeacherEdit(el, classNumber) {
+  const available = (window.currentAvailableTeachers || []).filter(t => t && t.trim());
+  const current = window.currentTeachers[classNumber - 1] || "";
+
+  // If no teachers configured, show a tooltip-style message
+  if (available.length === 0) {
+    const msg = document.createElement("span");
+    msg.style.cssText = "font-size:11px;color:var(--ink-4);font-style:italic;";
+    msg.textContent = "Add teachers above first";
+    el.replaceWith(msg);
+    setTimeout(() => msg.replaceWith(el), 2000);
+    return;
+  }
+
+  // Build a select dropdown from available teachers, excluding those already assigned to other classes
+  const assignedElsewhere = new Set(
+    (window.currentTeachers || []).filter((t, i) => t && i !== classNumber - 1)
+  );
+
+  const select = document.createElement("select");
+  select.style.cssText = "font-size:11px;font-family:inherit;color:var(--ink-3);background:var(--panel);border:1px solid var(--terra);border-radius:4px;outline:none;padding:1px 4px;max-width:160px;";
+
+  const blankOpt = document.createElement("option");
+  blankOpt.value = "";
+  blankOpt.textContent = "— unassigned —";
+  select.appendChild(blankOpt);
+
+  available.forEach(t => {
+    if (assignedElsewhere.has(t)) return;
+    const opt = document.createElement("option");
+    opt.value = t;
+    opt.textContent = t;
+    if (t === current) opt.selected = true;
+    select.appendChild(opt);
+  });
+
+  if (!current) select.value = "";
+
+  el.replaceWith(select);
+  select.focus();
+
+  const finish = async () => {
+    const newName = select.value;
+    window.currentTeachers[classNumber - 1] = newName;
+    await fetch(`/api/grades/${currentGrade.id}/settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ teachers: window.currentTeachers }),
+    });
+    const div = document.createElement("div");
+    div.className = "teacher-label";
+    div.dataset.classNumber = classNumber;
+    div.style.cssText = `font-size:11px; color:${newName ? "var(--ink-3)" : "var(--ink-4)"}; cursor:pointer; margin-top:1px;`;
+    div.textContent = newName || "+ Add teacher";
+    div.onclick = () => startTeacherEdit(div, classNumber);
+    select.replaceWith(div);
+  };
+
+  select.addEventListener("blur", finish);
+  select.addEventListener("change", () => select.blur());
+}
+window.startTeacherEdit = startTeacherEdit;
 
 // Run assignment
 async function runAssignment() {
@@ -2147,12 +2702,8 @@ function closeBalanceInfoModal() {
 
 // Detail panel
 function showStudentDetail(name) {
-  console.log("showStudentDetail called with:", name);
-  console.log("window.currentStudents:", window.currentStudents);
   const student = window.currentStudents?.find((s) => s.name === name);
-  console.log("Found student:", student);
   if (!student) {
-    console.error("Student not found:", name);
     return;
   }
 
@@ -2165,7 +2716,7 @@ function showStudentDetail(name) {
   panel.innerHTML = `
     <div class="detail-h">
       <div>
-        <div class="nm">${student.name}</div>
+        <div class="nm" style="cursor:pointer;" title="Click to rename" onclick="startStudentNameEdit(this, '${student.name.replace(/'/g, "\\'")}')">${student.name}</div>
         <div class="gr">${currentGrade?.name || "Grade"}</div>
       </div>
       <button class="btn ghost sm" onclick="closeStudentDetail()">✕</button>
@@ -2240,6 +2791,28 @@ function showStudentDetail(name) {
             <button class="seg ${student.reading === "h" ? "active" : ""}" data-property="reading" data-value="h">High</button>
           </div>
         </div>
+        ${(config.properties || []).filter((p) => p.custom && p.enabled !== false).map((prop) => {
+          if (prop.type === "boolean") {
+            const val = student[prop.name];
+            return `
+        <div class="prop-row">
+          <span class="k">${prop.display_name}</span>
+          <div class="segmented">
+            <button class="seg ${!val ? "active" : ""}" data-property="${prop.name}" data-value="false">No</button>
+            <button class="seg ${val ? "active" : ""}" data-property="${prop.name}" data-value="true">Yes</button>
+          </div>
+        </div>`;
+          } else {
+            const val = student[prop.name] ?? "";
+            return `
+        <div class="prop-row">
+          <span class="k">${prop.display_name}</span>
+          <div class="segmented">
+            ${(prop.values || []).map((v) => `<button class="seg ${val === v ? "active" : ""}" data-property="${prop.name}" data-value="${v}">${v}</button>`).join("")}
+          </div>
+        </div>`;
+          }
+        }).join("")}
       </div>
 
       <div class="detail-section">
@@ -2317,6 +2890,27 @@ function showStudentDetail(name) {
           }
         </div>
       </div>
+      <div class="detail-section">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px">
+          <h5 style="margin:0">Previous teachers</h5>
+          <button class="btn ghost sm" onclick="addPreviousTeacher('${student.name.replace(/'/g, "\\'")}')">+ Add</button>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:6px" id="prev-teachers-list">
+          ${(() => {
+            const prev = student.previous_teachers;
+            const list = Array.isArray(prev)
+              ? prev
+              : (prev ? String(prev).split("|").map(t => t.trim()).filter(Boolean) : []);
+            if (list.length === 0) return '<span class="muted" style="font-size:12px">None recorded.</span>';
+            return list.map(t => `
+              <span class="friend-pill" style="display:inline-flex; align-items:center; gap:4px">
+                <span style="font-size:12px">${t}</span>
+                <button onclick="removePreviousTeacher('${student.name.replace(/'/g, "\\'")}', '${t.replace(/'/g, "\\'")}')" style="background:none; border:none; cursor:pointer; padding:0 2px; color:var(--ink-3); font-size:12px; line-height:1" title="Remove">×</button>
+              </span>`).join("");
+          })()}
+        </div>
+      </div>
+
       <div class="detail-section" style="margin-top:auto; padding-top:16px; border-top:1px solid var(--line-soft)">
         <button class="btn ghost sm" style="color:var(--rose); border-color:var(--rose-soft); width:100%"
           onclick="confirmDeleteStudent('${student.name.replace(/'/g, "\\'")}')">
@@ -2344,6 +2938,159 @@ function showStudentDetail(name) {
 function closeStudentDetail() {
   document.getElementById("detailPanel").classList.remove("open");
 }
+
+function startStudentNameEdit(el, currentName) {
+  const input = document.createElement("input");
+  input.type = "text";
+  input.value = currentName;
+  input.style.cssText = "font:inherit;font-size:inherit;font-weight:inherit;color:inherit;background:transparent;border:none;border-bottom:1px solid var(--terra);outline:none;width:200px;padding:0;";
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+
+  const finish = async () => {
+    const newName = input.value.trim();
+    if (!newName || newName === currentName) {
+      input.replaceWith(el);
+      return;
+    }
+    // Check for duplicate
+    if ((window.currentStudents || []).some(s => s.name === newName)) {
+      showNotice("A student with that name already exists", "error");
+      input.replaceWith(el);
+      return;
+    }
+    await renameStudent(currentName, newName);
+  };
+
+  input.addEventListener("blur", finish);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") input.blur();
+    if (e.key === "Escape") { input.value = currentName; input.blur(); }
+  });
+}
+
+async function renameStudent(oldName, newName) {
+  if (!currentGrade) return;
+
+  // Update in currentStudents
+  const student = (window.currentStudents || []).find(s => s.name === oldName);
+  if (!student) return;
+  student.name = newName;
+
+  // Update any references in other students' friends/incompatible fields
+  (window.currentStudents || []).forEach(s => {
+    if (s.friends) {
+      s.friends = s.friends.split(",").map(f => f.trim() === oldName ? newName : f.trim()).join(",");
+    }
+    if (s.incompatible) {
+      s.incompatible = s.incompatible.split(",").map(f => f.trim() === oldName ? newName : f.trim()).join(",");
+    }
+  });
+
+  // Update assignments if they exist
+  if (window.currentAssignments) {
+    window.currentAssignments.forEach(a => {
+      if (a.name === oldName) a.name = newName;
+    });
+  }
+  if (window.solverBaseline) {
+    window.solverBaseline.forEach(a => {
+      if (a.name === oldName) a.name = newName;
+    });
+  }
+
+  try {
+    // Save students
+    await fetch(`/api/grades/${currentGrade.id}/students`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ students: window.currentStudents }),
+    });
+
+    // Save assignments if they exist
+    if (window.currentAssignments) {
+      await fetch(`/api/grades/${currentGrade.id}/assignments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignments: window.currentAssignments, update_baseline: true }),
+      });
+    }
+
+    showStudentDetail(newName);
+  } catch (err) {
+    showNotice("Failed to rename student", "error");
+  }
+}
+
+window.startStudentNameEdit = startStudentNameEdit;
+
+function getPreviousTeacherList(student) {
+  const prev = student.previous_teachers;
+  if (Array.isArray(prev)) return prev.filter(Boolean);
+  return prev ? String(prev).split("|").map(t => t.trim()).filter(Boolean) : [];
+}
+
+async function savePreviousTeachers(studentName, list) {
+  const student = window.currentStudents?.find(s => s.name === studentName);
+  if (!student) return;
+  student.previous_teachers = list;
+  await fetch(`/api/grades/${currentGrade.id}/students`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ students: window.currentStudents }),
+  });
+}
+
+function addPreviousTeacher(studentName) {
+  const container = document.getElementById("prev-teachers-list");
+  if (!container) return;
+
+  // Avoid opening two inputs at once
+  if (container.querySelector(".prev-teacher-input")) return;
+
+  const wrapper = document.createElement("span");
+  wrapper.className = "prev-teacher-input";
+  wrapper.style.cssText = "display:inline-flex; align-items:center; gap:4px;";
+  wrapper.innerHTML = `
+    <input type="text" placeholder="Teacher name" autocomplete="off"
+      style="font-size:12px; padding:3px 7px; border:1px solid var(--terra); border-radius:5px; background:var(--bg-2); color:var(--ink); outline:none; width:140px;">
+  `;
+  container.appendChild(wrapper);
+  const input = wrapper.querySelector("input");
+  input.focus();
+
+  const commit = async () => {
+    const val = input.value.trim();
+    wrapper.remove();
+    if (!val) return;
+    const student = window.currentStudents?.find(s => s.name === studentName);
+    if (!student) return;
+    const list = getPreviousTeacherList(student);
+    if (!list.includes(val)) {
+      list.push(val);
+      await savePreviousTeachers(studentName, list);
+    }
+    showStudentDetail(studentName);
+  };
+
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", e => {
+    if (e.key === "Enter") input.blur();
+    if (e.key === "Escape") { wrapper.remove(); }
+  });
+}
+
+async function removePreviousTeacher(studentName, teacherName) {
+  const student = window.currentStudents?.find(s => s.name === studentName);
+  if (!student) return;
+  const list = getPreviousTeacherList(student).filter(t => t !== teacherName);
+  await savePreviousTeachers(studentName, list);
+  showStudentDetail(studentName);
+}
+
+window.addPreviousTeacher = addPreviousTeacher;
+window.removePreviousTeacher = removePreviousTeacher;
 
 async function updateStudentProperty(studentName, property, value) {
   if (!currentGrade) return;
@@ -2547,6 +3294,11 @@ async function _handleImportModalFile(file) {
   const friendsIdx = headers.findIndex((h) => h.includes("friend"));
   const incompIdx = headers.findIndex((h) => h.includes("incompatible"));
 
+  const customCols = (config.properties || []).filter((p) => p.custom).map((prop) => ({
+    prop,
+    idx: headers.findIndex((h) => h === prop.name || h === prop.display_name.toLowerCase().replace(/\s+/g, "_")),
+  }));
+
   if (nameIdx === -1) {
     if (statusEl) {
       statusEl.textContent = 'CSV must have a "name" column.';
@@ -2563,6 +3315,14 @@ async function _handleImportModalFile(file) {
       const rowGrade = normalizeGradeName(cells[gradeIdx] || "");
       if (rowGrade && rowGrade !== currentGrade.name) continue;
     }
+    const customData = {};
+    customCols.forEach(({ prop, idx }) => {
+      if (prop.type === "boolean") {
+        customData[prop.name] = idx !== -1 ? normalizeYesNo(cells[idx]) === "y" : false;
+      } else {
+        customData[prop.name] = idx !== -1 ? (cells[idx]?.trim() || prop.values?.[0] || "") : (prop.values?.[0] || "");
+      }
+    });
     students.push({
       name: cells[nameIdx].trim(),
       gender: genderIdx !== -1 ? normalizeGender(cells[genderIdx]) : "b",
@@ -2579,6 +3339,7 @@ async function _handleImportModalFile(file) {
       reading: readingIdx !== -1 ? normalizeLevelHML(cells[readingIdx]) : "m",
       friends: friendsIdx !== -1 ? (cells[friendsIdx] || "").trim() : "",
       incompatible: incompIdx !== -1 ? (cells[incompIdx] || "").trim() : "",
+      ...customData,
     });
   }
 
@@ -2647,6 +3408,11 @@ async function handleGradeCSVFile(file) {
   const friendsIdx = headers.findIndex((h) => h.includes("friend"));
   const incompIdx = headers.findIndex((h) => h.includes("incompatible"));
 
+  const customCols = (config.properties || []).filter((p) => p.custom).map((prop) => ({
+    prop,
+    idx: headers.findIndex((h) => h === prop.name || h === prop.display_name.toLowerCase().replace(/\s+/g, "_")),
+  }));
+
   if (nameIdx === -1) {
     if (errorEl) errorEl.textContent = 'CSV must have a "name" column.';
     return;
@@ -2661,6 +3427,14 @@ async function handleGradeCSVFile(file) {
       const rowGrade = normalizeGradeName(cells[gradeIdx] || "");
       if (rowGrade && rowGrade !== currentGrade.name) continue;
     }
+    const customData = {};
+    customCols.forEach(({ prop, idx }) => {
+      if (prop.type === "boolean") {
+        customData[prop.name] = idx !== -1 ? normalizeYesNo(cells[idx]) === "y" : false;
+      } else {
+        customData[prop.name] = idx !== -1 ? (cells[idx]?.trim() || prop.values?.[0] || "") : (prop.values?.[0] || "");
+      }
+    });
     students.push({
       name: cells[nameIdx].trim(),
       gender: genderIdx !== -1 ? normalizeGender(cells[genderIdx]) : "b",
@@ -2677,6 +3451,7 @@ async function handleGradeCSVFile(file) {
       reading: readingIdx !== -1 ? normalizeLevelHML(cells[readingIdx]) : "m",
       friends: friendsIdx !== -1 ? (cells[friendsIdx] || "").trim() : "",
       incompatible: incompIdx !== -1 ? (cells[incompIdx] || "").trim() : "",
+      ...customData,
     });
   }
 
@@ -2736,6 +3511,31 @@ function showConfirm(
   });
 }
 window.showConfirm = showConfirm;
+
+function showSavePrompt(message) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.style.cssText =
+      "position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:2000;display:flex;align-items:center;justify-content:center";
+    overlay.innerHTML = `
+      <div style="background:var(--panel);border-radius:12px;width:380px;padding:24px 24px 20px;box-shadow:0 12px 40px rgba(0,0,0,0.2)">
+        <div style="font-size:15px;font-weight:600;color:var(--ink);margin-bottom:8px">Unsaved changes</div>
+        <div style="font-size:13px;color:var(--ink-3);line-height:1.5;margin-bottom:20px">${message || "You have unsaved changes to the class assignments."}</div>
+        <div style="display:flex;justify-content:flex-end;gap:8px">
+          <button class="btn ghost sm" id="sp-cancel">Cancel</button>
+          <button class="btn ghost sm" id="sp-discard" style="color:var(--rose);border-color:var(--rose)">Discard</button>
+          <button class="btn sm" id="sp-save" style="background:var(--terra);color:#fff;border-color:var(--terra)">Save changes</button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector("#sp-cancel").addEventListener("click", () => { overlay.remove(); resolve("cancel"); });
+    overlay.querySelector("#sp-discard").addEventListener("click", () => { overlay.remove(); resolve("discard"); });
+    overlay.querySelector("#sp-save").addEventListener("click", () => { overlay.remove(); resolve("save"); });
+    document.body.appendChild(overlay);
+    overlay.querySelector("#sp-save").focus();
+  });
+}
+window.showSavePrompt = showSavePrompt;
 
 function showNotice(message, type = "success") {
   const isError = type === "error";
@@ -3108,6 +3908,28 @@ function openAddStudentModal() {
             .join("")}
         </div>
 
+        ${(config.properties || []).filter((p) => p.custom && p.enabled !== false).map((prop) => {
+          if (prop.type === "boolean") {
+            return `
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">${prop.display_name}</label>
+          <div class="segmented">
+            <button class="seg active" data-field="${prop.name}" data-value="false">No</button>
+            <button class="seg" data-field="${prop.name}" data-value="true">Yes</button>
+          </div>
+        </div>`;
+          } else {
+            const values = prop.values || [];
+            return `
+        <div>
+          <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">${prop.display_name}</label>
+          <div class="segmented">
+            ${values.map((v, i) => `<button class="seg ${i === 0 ? "active" : ""}" data-field="${prop.name}" data-value="${v}">${v}</button>`).join("")}
+          </div>
+        </div>`;
+          }
+        }).join("")}
+
         <div id="add-student-error" style="font-size:12px;color:var(--rose);display:none"></div>
       </div>
       <div style="padding:16px 24px;border-top:1px solid var(--line-soft);display:flex;justify-content:flex-end;gap:8px">
@@ -3165,6 +3987,15 @@ async function submitAddStudent() {
     fields[btn.getAttribute("data-field")] = btn.getAttribute("data-value");
   });
 
+  const customValues = {};
+  (config.properties || []).filter((p) => p.custom).forEach((prop) => {
+    if (prop.type === "boolean") {
+      customValues[prop.name] = fields[prop.name] === "true";
+    } else {
+      customValues[prop.name] = fields[prop.name] ?? (prop.values?.[0] || "");
+    }
+  });
+
   const newStudent = {
     name,
     gender: fields.gender || "g",
@@ -3178,6 +4009,7 @@ async function submitAddStudent() {
     gate: fields.gate === "true",
     friends: "",
     incompatible: "",
+    ...customValues,
   };
 
   window.currentStudents = [...(window.currentStudents || []), newStudent];
@@ -3559,6 +4391,111 @@ window.filterRelationList = filterRelationList;
 window.addRelation = addRelation;
 window.removeRelation = removeRelation;
 
+// Assignment tab: hover to highlight friends/incompatibles
+function showAssignmentHighlight(name) {
+  const container = document.getElementById("classCardsContainer");
+  if (!container) return;
+
+  const student = (window.currentStudents || []).find((s) => s.name === name);
+  const friends = student?.friends
+    ? student.friends.split(",").map((f) => f.trim()).filter(Boolean)
+    : [];
+  const incompatibles = student?.incompatible
+    ? student.incompatible.split(",").map((f) => f.trim()).filter(Boolean)
+    : [];
+
+  container.querySelectorAll(".student-row").forEach((row) => {
+    const rowName = row.dataset.studentName;
+    row.querySelectorAll(".assign-indicator").forEach((el) => el.remove());
+
+    if (friends.includes(rowName)) {
+      const el = document.createElement("span");
+      el.className = "assign-indicator";
+      el.style.cssText = "font-size:10px;font-weight:700;color:var(--sage);line-height:1;flex-shrink:0;margin-left:auto;padding-left:6px;";
+      el.textContent = "F";
+      row.appendChild(el);
+    } else if (incompatibles.includes(rowName)) {
+      const el = document.createElement("span");
+      el.className = "assign-indicator";
+      el.style.cssText = "font-size:14px;color:var(--error);line-height:1;flex-shrink:0;margin-left:auto;padding-left:6px;";
+      el.textContent = "⊘";
+      row.appendChild(el);
+    }
+  });
+}
+
+function clearAssignmentHighlight() {
+  document.querySelectorAll(".assign-indicator").forEach((el) => el.remove());
+}
+
+// Search and filter for class cards view
+function filterAssignmentStudents(query) {
+  window.assignmentSearch = query;
+  applyAssignmentFilters();
+}
+
+function toggleAssignmentFilter(flag) {
+  if (window.assignmentFilterFlags.has(flag)) {
+    window.assignmentFilterFlags.delete(flag);
+  } else {
+    window.assignmentFilterFlags.add(flag);
+  }
+  // Update chip button appearance
+  document.querySelectorAll("[data-filter-flag]").forEach((btn) => {
+    const active = window.assignmentFilterFlags.has(btn.dataset.filterFlag);
+    btn.style.background = active ? "var(--ink)" : "transparent";
+    btn.style.color = active ? "#fff" : "var(--ink-3)";
+  });
+  applyAssignmentFilters();
+}
+
+function clearAssignmentFilters() {
+  window.assignmentSearch = "";
+  window.assignmentFilterFlags.clear();
+  const input = document.getElementById("assignmentSearch");
+  if (input) input.value = "";
+  document.querySelectorAll("[data-filter-flag]").forEach((btn) => {
+    btn.style.background = "transparent";
+    btn.style.color = "var(--ink-3)";
+  });
+  applyAssignmentFilters();
+}
+
+function applyAssignmentFilters() {
+  const query = (window.assignmentSearch || "").toLowerCase();
+  const flags = window.assignmentFilterFlags || new Set();
+  const allStudents = [...(window.currentAssignments || []), ...(window.currentStudents || [])];
+
+  document.querySelectorAll(".student-row[data-student-name]").forEach((row) => {
+    const name = row.getAttribute("data-student-name");
+    let matches = true;
+
+    if (query) matches = name.toLowerCase().includes(query);
+
+    if (matches && flags.size > 0) {
+      const student = allStudents.find((s) => s.name === name);
+      if (student) {
+        for (const flag of flags) {
+          if (!(student[flag] === true || student[flag] === "true")) {
+            matches = false;
+            break;
+          }
+        }
+      } else {
+        matches = false;
+      }
+    }
+
+    row.style.opacity = matches ? "1" : "0.12";
+    row.style.pointerEvents = matches ? "" : "none";
+  });
+
+  const clearBtn = document.getElementById("clearFiltersBtn");
+  if (clearBtn) {
+    clearBtn.style.display = (query || flags.size > 0) ? "" : "none";
+  }
+}
+
 // Drag and drop handlers
 let draggedStudent = null;
 
@@ -3618,13 +4555,13 @@ async function handleDrop(event) {
     return;
   }
 
-  let involvedUnassigned = false;
+  const involvesUnassigned = targetClass === 0 || draggedStudent.currentClass === 0;
+
   if (targetClass === 0) {
     // Dragging back to unassigned — remove from assignments
     window.currentAssignments = (window.currentAssignments || []).filter(
       (s) => s.name !== draggedStudent.name,
     );
-    involvedUnassigned = true;
   } else if (draggedStudent.currentClass === 0) {
     // Dragging from unassigned into a class — add to assignments
     const rosterStudent = (window.currentStudents || []).find(
@@ -3635,37 +4572,29 @@ async function handleDrop(event) {
         ...(window.currentAssignments || []),
         { ...rosterStudent, assigned_class: targetClass },
       ];
-      involvedUnassigned = true;
     }
-  }
-
-  // Update assignment in memory for class-to-class moves
-  if (draggedStudent.currentClass !== 0 && targetClass !== 0) {
+  } else {
+    // Class-to-class move
     const student = window.currentAssignments.find(
       (s) => s.name === draggedStudent.name,
     );
-    if (student) {
-      console.log(
-        `Moving ${student.name} from class ${student.assigned_class} to class ${targetClass}`,
-      );
-      student.assigned_class = targetClass;
-      window.hasUnsavedChanges = true;
-    }
+    if (student) student.assigned_class = targetClass;
   }
 
-  // Auto-save all drag/drop changes immediately
-  try {
-    const res = await fetch(`/api/grades/${currentGrade.id}/assignments`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assignments: window.currentAssignments }),
-    });
-    if (res.ok) {
-      window.hasUnsavedChanges = false;
+  if (involvesUnassigned) {
+    // No save button in this context — auto-save immediately
+    try {
+      await fetch(`/api/grades/${currentGrade.id}/assignments`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignments: window.currentAssignments, update_baseline: true }),
+      });
+    } catch (err) {
+      console.error("Failed to save assignment change:", err);
     }
-  } catch (err) {
-    console.error("Failed to save assignment change:", err);
-    showNotice("Move saved in memory but failed to persist. Try saving manually.", "error");
+  } else {
+    // Class-to-class move inside edit mode — requires explicit save
+    window.hasUnsavedChanges = true;
   }
 
   // Refresh the results screen to show updated assignments and stats
@@ -3688,6 +4617,7 @@ async function handleDrop(event) {
   if (revertBtn) revertBtn.disabled = !currentHasUnsaved;
 
   draggedStudent = null;
+  applyAssignmentFilters();
 }
 
 window.handleDragStart = handleDragStart;
@@ -3695,6 +4625,86 @@ window.handleDragEnd = handleDragEnd;
 window.handleDragOver = handleDragOver;
 window.handleDragLeave = handleDragLeave;
 window.handleDrop = handleDrop;
+window.showAssignmentHighlight = showAssignmentHighlight;
+window.clearAssignmentHighlight = clearAssignmentHighlight;
+window.filterAssignmentStudents = filterAssignmentStudents;
+window.toggleAssignmentFilter = toggleAssignmentFilter;
+window.clearAssignmentFilters = clearAssignmentFilters;
+window.applyAssignmentFilters = applyAssignmentFilters;
+
+function toggleCleanView() {
+  window.cleanView = !window.cleanView;
+  document.body.classList.toggle("clean-view", window.cleanView);
+  const btn = document.getElementById("cleanViewBtn");
+  if (btn) {
+    btn.style.background = window.cleanView ? "var(--ink)" : "transparent";
+    btn.style.color = window.cleanView ? "#fff" : "var(--ink-3)";
+  }
+}
+window.toggleCleanView = toggleCleanView;
+
+function showGradeInfoModal() {
+  const props = (config.properties || []).filter((p) => p.enabled && p.type !== "relationship" && p.type !== "hard_toggle" && p.name !== "gender");
+  const boolProps = props.filter((p) => p.type === "boolean");
+  const catProps  = props.filter((p) => p.type !== "boolean");
+
+  const flagRows = boolProps.map((p) => `
+    <tr>
+      <td style="padding:5px 10px 5px 0;font-weight:500;white-space:nowrap;">${p.display_name === "504 Plan" ? "504" : p.display_name}</td>
+      <td style="padding:5px 0;color:var(--ink-3);font-size:12px;">${p.display_name}</td>
+    </tr>`).join("");
+
+  const catRows = catProps.map((p) => `
+    <tr>
+      <td style="padding:5px 10px 5px 0;font-weight:500;white-space:nowrap;">
+        <span class="chip" style="font-size:8px;padding:1px 4px;background:var(--rose-soft);margin-right:3px;">${p.display_name.slice(0,3)} H</span>
+        <span class="chip" style="font-size:8px;padding:1px 4px;background:var(--amber-soft, var(--bg-2));">${p.display_name.slice(0,3)} L</span>
+      </td>
+      <td style="padding:5px 0;color:var(--ink-3);font-size:12px;">${p.display_name} — H = High, L = Low (medium not shown)</td>
+    </tr>`).join("");
+
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:2000;display:flex;align-items:center;justify-content:center;";
+  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+
+  overlay.innerHTML = `
+    <div style="background:var(--panel);border-radius:12px;width:460px;max-width:90vw;max-height:80vh;overflow:auto;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,0.2);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;">
+        <h2 style="margin:0;font-size:18px;">Legend</h2>
+        <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--ink-3);line-height:1;">×</button>
+      </div>
+
+      ${catProps.length > 0 ? `
+        <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin:0 0 10px;">Level indicators</h3>
+        <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:13px;">
+          ${catRows}
+        </table>
+      ` : ""}
+
+      ${boolProps.length > 0 ? `
+        <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin:0 0 10px;">Flag chips</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          ${flagRows}
+        </table>
+      ` : ""}
+
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line-soft);">
+        <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin:0 0 10px;">Hover indicators</h3>
+        <table style="width:100%;border-collapse:collapse;font-size:13px;">
+          <tr><td style="padding:5px 10px 5px 0;font-weight:600;color:var(--sage);width:30px;">F</td><td style="padding:5px 0;color:var(--ink-3);font-size:12px;">Student has a friend in the same class</td></tr>
+          <tr><td style="padding:5px 10px 5px 0;font-weight:600;color:var(--error);font-size:16px;">⊘</td><td style="padding:5px 0;color:var(--ink-3);font-size:12px;">Student is placed with an incompatible classmate</td></tr>
+        </table>
+      </div>
+    </div>
+  `;
+
+  // Close button targets
+  overlay.classList.add("modal-overlay");
+  overlay.querySelector("button").addEventListener("click", () => overlay.remove());
+
+  document.body.appendChild(overlay);
+}
+window.showGradeInfoModal = showGradeInfoModal;
 
 // Balance explanation modal
 function showBalanceExplanationModal() {
@@ -3710,6 +4720,22 @@ window.closeBalanceExplanationModal = closeBalanceExplanationModal;
 
 // Edit mode functions
 async function toggleEditMode(enabled) {
+  if (!enabled && window.hasUnsavedChanges) {
+    const action = await showSavePrompt("Save your manual changes before exiting edit mode?");
+    if (action === "cancel") {
+      // Re-check the checkbox
+      const cb = document.getElementById("editModeToggle");
+      if (cb) cb.checked = true;
+      return;
+    }
+    if (action === "save") {
+      await saveManualChanges();
+      return; // saveManualChanges re-renders with editMode=false
+    }
+    // discard: clear flag and fall through
+    window.hasUnsavedChanges = false;
+  }
+
   window.editMode = enabled;
 
   // Re-render to update draggable state
@@ -3732,11 +4758,12 @@ async function saveManualChanges() {
     const response = await fetch(`/api/grades/${currentGrade.id}/assignments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assignments: window.currentAssignments }),
+      body: JSON.stringify({ assignments: window.currentAssignments, update_baseline: true }),
     });
 
     if (response.ok) {
       window.hasUnsavedChanges = false;
+      window.editMode = false;
       showScreen("results");
       showNotice("Changes saved successfully!");
     } else {

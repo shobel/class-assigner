@@ -2,7 +2,8 @@
 
 let transitionData = {
   nextYear: '',
-  grades: {}
+  grades: {},
+  gradeSettings: {}  // num_classes, available_teachers per grade
 };
 
 // Show transition wizard
@@ -49,21 +50,63 @@ async function showTransitionWizard() {
   transitionData.grades = {
     'Kindergarten': []  // Empty for new students
   };
+  transitionData.gradeSettings = {};
+
+  // Carry Kindergarten's own settings forward (it keeps its slot, just gets new students)
+  const kinderGrade = currentData.find(g => g.id === 'kindergarten');
+  if (kinderGrade) {
+    const kinderRes = await fetch(`/api/grades/kindergarten/students`);
+    const kinderData = await kinderRes.json();
+    transitionData.gradeSettings['Kindergarten'] = {
+      num_classes: kinderData.num_classes || 3,
+      available_teachers: kinderData.available_teachers || [],
+    };
+  }
 
   // Load students and promote them
   for (const grade of currentData) {
     const nextGradeName = gradeMap[grade.id];
     if (nextGradeName) {
-      // Fetch students
+      // Fetch students (includes teachers list and grade settings)
       const studentsRes = await fetch(`/api/grades/${grade.id}/students`);
       const studentsData = await studentsRes.json();
+      const teachers = studentsData.teachers || [];
 
-      transitionData.grades[nextGradeName] = studentsData.students.map(s => ({
-        ...s,
-        fromGrade: grade.name,
-        removed: false,
-        isNew: false
-      }));
+      // Carry grade settings to the promoted grade
+      transitionData.gradeSettings[nextGradeName] = {
+        num_classes: studentsData.num_classes || 5,
+        available_teachers: studentsData.available_teachers || [],
+      };
+
+      // Fetch assignments to know which class each student was in
+      const assignRes = await fetch(`/api/grades/${grade.id}/assignments`);
+      const assignData = await assignRes.json();
+      const assignmentMap = {};
+      for (const a of (assignData.assignments || [])) {
+        assignmentMap[a.name] = a.assigned_class;
+      }
+
+      transitionData.grades[nextGradeName] = studentsData.students.map(s => {
+        // Look up this student's teacher from their assigned class
+        const assignedClass = assignmentMap[s.name];
+        const teacher = assignedClass ? (teachers[assignedClass - 1] || '') : '';
+
+        // Merge into previous_teachers
+        const existing = Array.isArray(s.previous_teachers)
+          ? s.previous_teachers
+          : (s.previous_teachers ? String(s.previous_teachers).split('|').map(t => t.trim()).filter(Boolean) : []);
+        const updatedTeachers = teacher && !existing.includes(teacher)
+          ? [...existing, teacher]
+          : existing;
+
+        return {
+          ...s,
+          previous_teachers: updatedTeachers,
+          fromGrade: grade.name,
+          removed: false,
+          isNew: false
+        };
+      });
     }
   }
 
@@ -289,9 +332,11 @@ async function confirmTransition() {
     });
 
     if (activeStudents.length > 0 || gradeName === 'Kindergarten') {
+      const settings = transitionData.gradeSettings[gradeName] || {};
       newYearData[gradeName] = {
         students: activeStudents,
-        num_classes: gradeName === 'Kindergarten' ? 3 : 5,
+        num_classes: settings.num_classes || (gradeName === 'Kindergarten' ? 3 : 5),
+        available_teachers: settings.available_teachers || [],
         assignments: []
       };
     }

@@ -1,9 +1,13 @@
 {
+  "activated": true,
+  "activation_code": "ABCD-1234-EFGH",
   "active_school_year": "2025\u201326",
   "available_school_years": [
     "2025\u201326"
   ],
+  "current_school_year": "2025\u201326",
   "friend_weight": 30,
+  "max_grade": "5th Grade",
   "properties": [
     {
       "display_name": "Gender",
@@ -108,8 +112,24 @@
       "name": "friends",
       "type": "relationship",
       "weight": 20
+    },
+    {
+      "display_name": "Teacher uniqueness",
+      "enabled": true,
+      "icon": "\ud83d\udc69\u200d\ud83c\udfeb",
+      "name": "teacher_uniqueness",
+      "type": "hard_toggle"
+    },
+    {
+      "name": "test",
+      "display_name": "test",
+      "type": "boolean",
+      "constraint": "soft",
+      "weight": 60,
+      "enabled": true,
+      "custom": true
     }
   ],
-  "school_name": "School",
+  "school_name": "Cedar Wood Elementary",
   "school_year": "2025\u201326"
 }

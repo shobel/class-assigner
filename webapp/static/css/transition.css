@@ -50,12 +50,13 @@
 
 .transition-body {
   flex: 1;
-  overflow-y: auto;
+  overflow-x: auto;
+  overflow-y: hidden;
   padding: 28px;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  display: flex;
+  flex-direction: row;
   gap: 20px;
-  align-content: start;
+  align-items: stretch;
 }
 
 .transition-footer {
@@ -73,7 +74,9 @@
   border-radius: var(--rad-lg);
   display: flex;
   flex-direction: column;
-  max-height: 600px;
+  flex: 0 0 300px;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .transition-grade-header {
