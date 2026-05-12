@@ -810,7 +810,7 @@ function renderConfigScreen() {
           <p class="lede">How aggressively the optimizer should balance each factor. Higher weight wins ties when constraints compete.</p>
         </div>
         <div class="acts">
-          <button class="btn ghost">↻ Reset defaults</button>
+          <button class="btn ghost" onclick="resetWeightsToDefaults()">↻ Reset defaults</button>
           <button class="btn primary">✓ Saved</button>
         </div>
       </div>
@@ -905,20 +905,18 @@ function renderWeightSliders() {
             ${isCustom ? `<span onclick="toggleCustomConstraint('${prop.name}')" style="cursor:pointer; padding:1px 5px; border-radius:3px; font-size:9px; font-weight:700; text-transform:uppercase; background:${isHard ? "var(--rose)" : "var(--line-soft)"}; color:${isHard ? "#fff" : "var(--ink-3)"};">${isHard ? "Hard" : "Soft"}</span>` : ""}
           </div>
         </div>
-        ${isHardToggle ? (() => {
-          const hasTeachers = (grades || []).some(g => g.teachers && g.teachers.some(t => t));
-          return `
+        ${isHardToggle ? `
           <div style="font-size:11px; color:var(--ink-3); font-style:italic;">
-            Hard constraint — students never repeat a teacher${!hasTeachers ? ' <span style="color:var(--amber);font-style:normal;">· No teachers configured yet — set them in grade settings</span>' : ''}
+            Hard constraint — students never repeat a teacher
           </div>
-          <div></div>`;
-        })() : isHard ? `
+          <div></div>
+        ` : isHard ? `
           <div style="font-size:11px; color:var(--ink-3); font-style:italic;">Always enforced at maximum priority</div>
           <div></div>
         ` : `
-          <input type="range" min="0" max="5" step="1" class="slider" value="${weight}" onchange="updateWeight('${prop.name}', this.value)" ${!enabled ? "disabled" : ""}>
+          <input type="range" min="1" max="5" step="1" class="slider" value="${weight}" onchange="updateWeight('${prop.name}', this.value)" ${!enabled ? "disabled" : ""}>
           <div style="font-family: var(--t-mono); font-size: 10px; text-align: right; text-transform: uppercase; color: var(--terra);">
-            ${["Off", "Low", "Mild", "Medium", "High", "Critical"][weight]}
+            ${["", "Mild", "Medium", "High", "Critical"][weight - 1] || "Mild"}
           </div>
         `}
         ${isCustom ? `<button onclick="deleteCustomAttribute('${prop.name.replace(/'/g, "\\'")}')" title="Remove" style="background:none;border:none;cursor:pointer;color:var(--ink-3);font-size:16px;padding:0;line-height:1;align-self:center;">×</button>` : ""}
@@ -1124,6 +1122,45 @@ async function updateMaxGrade(value) {
   });
 }
 
+async function resetWeightsToDefaults() {
+  // Default weights based on slider values (1-5 scale = 20-100 weight)
+  const defaults = {
+    'gender': 40,        // 2 = Medium
+    'behavior': 100,     // 5 = Critical
+    'independence': 60,  // 3 = Medium
+    'iep': 100,          // 5 = Critical
+    '504': 100,          // 5 = Critical
+    'esl': 80,           // 4 = High
+    'gate': 60,          // 3 = Medium
+    'math': 60,          // 3 = Medium
+    'reading': 60,       // 3 = Medium
+    'friends': 20        // 1 = Mild
+  };
+
+  // Update config properties
+  config.properties.forEach(prop => {
+    if (defaults[prop.name] !== undefined) {
+      prop.weight = defaults[prop.name];
+    }
+  });
+
+  // Update friend_weight
+  if (config.friend_weight !== undefined) {
+    config.friend_weight = defaults['friends'];
+  }
+
+  // Save to server
+  await fetch("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+
+  // Re-render config screen
+  showScreen("config");
+  showNotice("Reset to default weights");
+}
+
 async function saveSchoolName() {
   const name = document.getElementById('schoolNameInput')?.value.trim();
   if (!name) return;
@@ -1171,14 +1208,25 @@ async function renderStudentsScreen() {
       solver_baseline: window.solverBaseline,
       num_classes: window.numClasses,
       class_names: window.classNames || {},
+      solver_status: window.solverStatus,
+      solver_elapsed: window.solverElapsed,
+      solver_combinations: window.solverCombinations,
     };
   } else {
     const assignRes = await fetch(`/api/grades/${currentGrade.id}/assignments`);
     assignData = await assignRes.json();
     assignments = assignData.assignments || [];
+    // Store solver metadata globally
+    window.solverStatus = assignData.solver_status;
+    window.solverElapsed = assignData.solver_elapsed;
+    window.solverCombinations = assignData.solver_combinations;
   }
 
   const hasAssignments = assignments.length > 0;
+
+  console.log('DEBUG renderStudentsScreen - hasAssignments:', hasAssignments);
+  console.log('DEBUG renderStudentsScreen - assignData:', assignData);
+  console.log('DEBUG renderStudentsScreen - solver_status:', assignData?.solver_status);
 
   // Set globals (don't overwrite in-memory assignment state when editing)
   window.currentStudents = students;
@@ -1260,6 +1308,16 @@ async function renderStudentsScreen() {
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
         <span style="font-size:12px;color:var(--ink-3);">${students.length} students</span>
         ${hasAssignments ? `<span style="color:var(--line-soft);">·</span><span style="font-size:12px;color:var(--ink-3);">${numClasses} classes</span>` : ""}
+        ${hasAssignments && assignData?.solver_status === "OPTIMAL" ? `
+          <span style="color:var(--line-soft);">·</span>
+          <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--terra);font-weight:600;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="8" r="6"/>
+              <path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>
+            </svg>
+            Optimal assignment
+          </span>
+        ` : ''}
         <div style="flex:1;min-width:8px;"></div>
         <button class="btn ghost" onclick="showImportModal()"><i data-lucide="upload" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Re‑import</button>
         ${hasAssignments
@@ -1294,9 +1352,11 @@ async function renderStudentsScreen() {
         <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px;padding:8px 12px;background:var(--bg-2);border:1px solid var(--line-soft);border-radius:var(--rad);font-size:12px;">
           <span style="color:var(--ink-3);">Classes <strong style="color:var(--ink);margin-left:4px;">${numClasses}</strong></span>
           <span style="color:var(--line);">|</span>
-          <span style="color:var(--ink-3);">Size <strong style="color:var(--ink);margin-left:4px;">${data.min_students}–${data.max_students}</strong><span style="color:var(--ink-4);margin-left:4px;">${data.enforce_class_size ? "hard" : "soft"}</span></span>
-          <span style="color:var(--line);">|</span>
           <span style="color:var(--ink-3);">Students <strong style="color:var(--ink);margin-left:4px;">${students.length}</strong></span>
+          <span style="color:var(--line);">|</span>
+          <span style="color:var(--ink-3);">Avg <strong style="color:var(--ink);margin-left:4px;">${(students.length / numClasses).toFixed(1)}</strong></span>
+          <span style="color:var(--line);">|</span>
+          <span style="color:var(--ink-3);">Size <strong style="color:var(--ink);margin-left:4px;">${data.min_students}–${data.max_students}</strong><span style="color:var(--ink-4);margin-left:4px;">${data.enforce_class_size ? "hard" : "soft"}</span></span>
           <button class="btn ghost sm" onclick="showGradeSettings('${currentGrade.id}')" style="margin-left:auto;">Edit</button>
         </div>
 
@@ -1685,12 +1745,21 @@ async function renderResultsScreen() {
       assignments: assignments,
       solver_baseline: window.solverBaseline,
       num_classes: window.numClasses,
+      solver_status: window.solverStatus,
+      solver_elapsed: window.solverElapsed,
+      solver_combinations: window.solverCombinations,
+      assignment_config: window.assignmentConfig,
     };
   } else {
     // Fetch fresh from server
     const assignRes = await fetch(`/api/grades/${currentGrade.id}/assignments`);
     assignData = await assignRes.json();
     assignments = assignData.assignments || [];
+    // Store assignment config for balance stats and solver metadata
+    window.assignmentConfig = assignData.assignment_config;
+    window.solverStatus = assignData.solver_status;
+    window.solverElapsed = assignData.solver_elapsed;
+    window.solverCombinations = assignData.solver_combinations;
   }
 
   const hasAssignments = assignments.length > 0;
@@ -1699,6 +1768,10 @@ async function renderResultsScreen() {
   window.currentStudents = students;
   window.currentTeachers = data.teachers || [];
   window.currentAvailableTeachers = data.available_teachers || [];
+
+  console.log('DEBUG renderResultsScreen - hasAssignments:', hasAssignments);
+  console.log('DEBUG renderResultsScreen - assignData:', assignData);
+  console.log('DEBUG renderResultsScreen - solver_status:', assignData?.solver_status);
 
   return `
     <div class="canvas">
@@ -1728,11 +1801,21 @@ async function renderResultsScreen() {
       <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px;padding:8px 12px;background:var(--bg-2);border:1px solid var(--line-soft);border-radius:var(--rad);font-size:12px;">
         <span style="color:var(--ink-3);">Classes <strong style="color:var(--ink);margin-left:4px;">${data.num_classes}</strong></span>
         <span style="color:var(--line);">|</span>
-        <span style="color:var(--ink-3);">Size <strong style="color:var(--ink);margin-left:4px;">${data.min_students}–${data.max_students}</strong><span style="color:var(--ink-4);margin-left:4px;">${data.enforce_class_size ? "hard" : "soft"}</span></span>
-        <span style="color:var(--line);">|</span>
         <span style="color:var(--ink-3);">Students <strong style="color:var(--ink);margin-left:4px;">${students.length}</strong></span>
         <span style="color:var(--line);">|</span>
         <span style="color:var(--ink-3);">Avg <strong style="color:var(--ink);margin-left:4px;">${(students.length / data.num_classes).toFixed(1)}</strong></span>
+        <span style="color:var(--line);">|</span>
+        <span style="color:var(--ink-3);">Size <strong style="color:var(--ink);margin-left:4px;">${data.min_students}–${data.max_students}</strong><span style="color:var(--ink-4);margin-left:4px;">${data.enforce_class_size ? "hard" : "soft"}</span></span>
+        ${hasAssignments && assignData?.solver_status === "OPTIMAL" ? `
+          <span style="color:var(--line);">|</span>
+          <span style="display:flex;align-items:center;gap:6px;color:var(--terra);font-weight:600;">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="8" r="6"/>
+              <path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>
+            </svg>
+            Optimal
+          </span>
+        ` : ''}
         <button class="btn ghost sm" onclick="showGradeSettings('${currentGrade.id}')" style="margin-left:auto;">Edit</button>
       </div>
 
@@ -1741,13 +1824,282 @@ async function renderResultsScreen() {
   `;
 }
 
+// Toggle between simple and advanced balance stats view
+async function toggleBalanceStatsView() {
+  window.balanceStatsAdvancedView = !window.balanceStatsAdvancedView;
+  const canvas = document.querySelector('.canvas');
+  if (canvas) {
+    canvas.innerHTML = await renderResultsScreen();
+  }
+}
+
+// Generate minimal balance statistics view
+function generateMinimalStats(propertiesToAnalyze, classesList, relationshipStatsHTML, configAtAssignment, assignmentConfig) {
+  // Helper to check if a property weight has changed since assignment
+  const hasWeightChanged = (propName, currentWeight) => {
+    if (!assignmentConfig) return false;
+    const currentProp = config.properties?.find(p => p.name === propName);
+    const assignmentProp = assignmentConfig.properties?.find(p => p.name === propName);
+    if (!currentProp || !assignmentProp) return false;
+    return currentProp.weight !== assignmentProp.weight;
+  };
+
+  // Group properties by weight (priority)
+  const getConstraintLevel = (weight) => {
+    if (weight >= 100) return { label: 'Critical', order: 1 };
+    if (weight >= 80) return { label: 'High', order: 2 };
+    if (weight >= 60) return { label: 'Medium', order: 3 };
+    if (weight >= 40) return { label: 'Mild', order: 4 };
+    return { label: 'Mild', order: 4 };
+  };
+
+  // Add hard constraints first
+  const hardConstraints = [];
+
+  // Check for incompatibilities
+  const allStudents = classesList.flatMap(cls => cls.students);
+  const studentsWithIncompat = allStudents.filter(s => s.incompatible && s.incompatible.length > 0);
+  if (studentsWithIncompat.length > 0) {
+    hardConstraints.push({
+      name: 'Incompatibility separation',
+      isMandatory: true,
+      level: { label: 'Mandatory requirements', order: 0 }
+    });
+  }
+
+  // Check for teacher uniqueness (hard_toggle type)
+  const teacherUniqueness = config.properties?.find(p => p.type === 'hard_toggle' && p.enabled);
+  if (teacherUniqueness) {
+    hardConstraints.push({
+      name: teacherUniqueness.display_name || 'Teacher uniqueness',
+      isMandatory: true,
+      level: { label: 'Mandatory requirements', order: 0 }
+    });
+  }
+
+  // Check for class size constraint (if enforce_class_size is true)
+  // Note: This would need to be passed from the grade data
+
+  // Process each property and calculate its optimization percentage
+  const propertyStats = propertiesToAnalyze.map(prop => {
+    const propName = prop.name;
+    const displayName = prop.display_name;
+    const weight = prop.weight || 20;
+    const level = getConstraintLevel(weight);
+    const weightChanged = hasWeightChanged(propName, weight);
+
+    // Count values per class
+    const classBreakdowns = classesList.map((cls) => {
+      const students = cls.students;
+      const counts = {};
+      students.forEach((s) => {
+        const value = s[propName];
+        if (value) {
+          counts[value] = (counts[value] || 0) + 1;
+        }
+      });
+      return { classNum: cls.number, counts, total: students.length };
+    });
+
+    // Check if property exists in data
+    const hasData = classBreakdowns.some(cb => Object.keys(cb.counts).length > 0);
+    if (!hasData) return null;
+
+    // Get all unique values across all classes
+    const allValues = new Set();
+    classBreakdowns.forEach((cb) =>
+      Object.keys(cb.counts).forEach((v) => allValues.add(v)),
+    );
+
+    // Calculate optimization percentage (0-100%)
+    let totalOptimality = 0;
+    let valueCount = 0;
+
+    allValues.forEach((value) => {
+      const countsForValue = classBreakdowns.map(cb => cb.counts[value] || 0);
+      const totalCount = countsForValue.reduce((a, b) => a + b, 0);
+      const avg = totalCount / countsForValue.length;
+      const variance =
+        countsForValue.reduce(
+          (sum, count) => sum + Math.pow(count - avg, 2),
+          0,
+        ) / countsForValue.length;
+      const stdDev = Math.sqrt(variance);
+
+      // Calculate theoretical minimum variance
+      const numClasses = countsForValue.length;
+      const baseCount = Math.floor(totalCount / numClasses);
+      const remainder = totalCount % numClasses;
+      const bestCaseDistribution = new Array(numClasses).fill(baseCount);
+      for (let i = 0; i < remainder; i++) {
+        bestCaseDistribution[i]++;
+      }
+      const minVariance =
+        bestCaseDistribution.reduce(
+          (sum, count) => sum + Math.pow(count - avg, 2),
+          0,
+        ) / bestCaseDistribution.length;
+      const minStdDev = Math.sqrt(minVariance);
+
+      // Calculate theoretical maximum variance
+      const worstCaseDistribution = new Array(numClasses).fill(0);
+      worstCaseDistribution[0] = totalCount;
+      const maxVariance =
+        worstCaseDistribution.reduce(
+          (sum, count) => sum + Math.pow(count - avg, 2),
+          0,
+        ) / worstCaseDistribution.length;
+      const maxStdDev = Math.sqrt(maxVariance);
+
+      // Calculate optimality (0-100%, where 100% = perfect)
+      const range = maxStdDev - minStdDev;
+      const optimality = range > 0 ?
+        Math.max(0, Math.min(100, ((maxStdDev - stdDev) / range) * 100)) : 100;
+
+      totalOptimality += optimality;
+      valueCount++;
+    });
+
+    const avgOptimality = valueCount > 0 ? totalOptimality / valueCount : 0;
+
+    return {
+      name: displayName,
+      weight,
+      level,
+      optimality: avgOptimality,
+      isMandatory: false, // Soft constraints are never truly mandatory
+      weightChanged
+    };
+  }).filter(Boolean);
+
+  // Group by constraint level
+  const grouped = {};
+
+  // Add hard constraints first
+  hardConstraints.forEach(stat => {
+    const levelLabel = stat.level.label;
+    if (!grouped[levelLabel]) {
+      grouped[levelLabel] = { order: stat.level.order, stats: [] };
+    }
+    grouped[levelLabel].stats.push(stat);
+  });
+
+  // Add soft constraints
+  propertyStats.forEach(stat => {
+    const levelLabel = stat.level.label;
+    if (!grouped[levelLabel]) {
+      grouped[levelLabel] = { order: stat.level.order, stats: [] };
+    }
+    grouped[levelLabel].stats.push(stat);
+  });
+
+  // Sort groups by order and generate HTML
+  const sortedGroups = Object.entries(grouped)
+    .sort((a, b) => a[1].order - b[1].order);
+
+  const groupsHTML = sortedGroups.map(([label, data]) => {
+    const statsHTML = data.stats.map(stat => {
+      const optimality = stat.optimality !== undefined ? stat.optimality : 100;
+      const isMandatory = stat.isMandatory;
+
+      // Color based on optimality
+      let barColor = 'var(--terra)';
+      if (!isMandatory) {
+        if (optimality < 70) barColor = 'var(--amber)';
+        if (optimality < 50) barColor = 'var(--rose)';
+      }
+
+      return `
+        <div style="margin-bottom: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 6px;">
+              <span style="font-size: 13px; font-weight: 500; color: var(--ink);">${stat.name}</span>
+              ${stat.weightChanged ? '<span title="Weight changed since assignment" style="display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: var(--amber-soft); color: var(--amber-ink); font-size: 9px; font-weight: 700;">!</span>' : ''}
+            </div>
+            <span style="font-size: 11px; font-family: var(--t-mono); color: ${isMandatory ? 'var(--terra)' : 'var(--ink-3)'}; font-weight: 600;">
+              ${isMandatory ? '✓ Met' : Math.round(optimality) + '% optimal'}
+            </span>
+          </div>
+          <div style="height: 6px; background: var(--bg-2); border-radius: 3px; overflow: hidden;">
+            <div style="height: 100%; width: ${isMandatory ? 100 : optimality}%; background: ${barColor}; border-radius: 3px; transition: width 0.3s;"></div>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    return `
+      <div style="margin-bottom: 20px;">
+        <h4 style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); margin-bottom: 12px; font-weight: 600;">
+          ${label}
+        </h4>
+        ${statsHTML}
+      </div>
+    `;
+  }).join('');
+
+  // Calculate friendship stats for minimal view
+  let relationshipHTML = '';
+  // allStudents already declared above
+  if (allStudents.some((s) => "has_friend_in_class" in s)) {
+    const studentsWithFriendsDefined = allStudents.filter((s) => {
+      const friends = s.friends;
+      return friends && friends.length > 0 && friends !== "[]";
+    }).length;
+
+    const totalWithFriend = allStudents.filter(s => s.has_friend_in_class).length;
+    const achievementRate = studentsWithFriendsDefined > 0
+      ? (totalWithFriend / studentsWithFriendsDefined) * 100
+      : 0;
+
+    // Color based on achievement rate
+    let barColor = 'var(--terra)';
+    if (achievementRate < 70) barColor = 'var(--amber)';
+    if (achievementRate < 50) barColor = 'var(--rose)';
+
+    relationshipHTML = `
+      <div style="margin-bottom: 20px;">
+        <h4 style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); margin-bottom: 12px; font-weight: 600;">
+          Relationships
+        </h4>
+        <div style="margin-bottom: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <span style="font-size: 13px; font-weight: 500; color: var(--ink);">Friendships</span>
+            <span style="font-size: 11px; font-family: var(--t-mono); color: var(--ink-3); font-weight: 600;">
+              ${Math.round(achievementRate)}% placed
+            </span>
+          </div>
+          <div style="height: 6px; background: var(--bg-2); border-radius: 3px; overflow: hidden;">
+            <div style="height: 100%; width: ${achievementRate}%; background: ${barColor}; border-radius: 3px; transition: width 0.3s;"></div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  return `
+    <div class="panel" style="max-width: 800px;">
+      <div class="panel-b">
+        ${groupsHTML}
+        ${relationshipHTML}
+      </div>
+    </div>
+  `;
+}
+
 // Calculate balance statistics for assignments
 function calculateBalanceStats(classesList) {
   if (!classesList || classesList.length === 0) return "";
 
-  // Collect all properties to analyze (from enabled config)
+  // Check if we should show advanced view
+  const showAdvanced = window.balanceStatsAdvancedView || false;
+
+  // Use assignment config if available (historical), otherwise current config
+  const assignmentConfig = window.assignmentConfig;
+  const configToUse = assignmentConfig || config;
+
+  // Collect all properties to analyze (from enabled config at assignment time)
   const propertiesToAnalyze =
-    config.properties?.filter((p) => p.enabled && p.type !== "relationship") ||
+    configToUse.properties?.filter((p) => p.enabled && p.type !== "relationship") ||
     [];
 
   const statCards = propertiesToAnalyze
@@ -1952,16 +2304,24 @@ function calculateBalanceStats(classesList) {
 
   if (!statCards && !relationshipStats) return "";
 
+  // Generate minimal stats view
+  const minimalStats = generateMinimalStats(propertiesToAnalyze, classesList, relationshipStats, configToUse, assignmentConfig);
+
   return `
     <div style="margin-bottom: 24px;">
-      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 16px;">
+      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
         <h2 style="margin: 0;">Balance Statistics</h2>
         <button onclick="showBalanceExplanationModal()" style="background: none; border: 1px solid var(--line); border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 11px; color: var(--ink-3); transition: all 0.15s;" onmouseover="this.style.borderColor='var(--ink)'; this.style.color='var(--ink)';" onmouseout="this.style.borderColor='var(--line)'; this.style.color='var(--ink-3)';">?</button>
+        <button onclick="toggleBalanceStatsView()" style="margin-left: auto; padding: 4px 10px; font-size: 11px; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--rad); cursor: pointer; color: var(--ink-3); transition: all 0.15s;" onmouseover="this.style.background='var(--panel)'; this.style.color='var(--ink)';" onmouseout="this.style.background='var(--bg-2)'; this.style.color='var(--ink-3)';">
+          ${showAdvanced ? '← Simple view' : 'Advanced metrics →'}
+        </button>
       </div>
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px;">
-        ${statCards}
-        ${relationshipStats}
-      </div>
+      ${showAdvanced ? `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px;">
+          ${statCards}
+          ${relationshipStats}
+        </div>
+      ` : minimalStats}
     </div>
   `;
 }
@@ -2325,22 +2685,6 @@ function renderAssignmentResults(assignments, numClasses, assignData) {
   const solverCombinations = assignData?.solver_combinations;
 
   return `
-    <!-- Optimal Banner -->
-    ${
-      isOptimal && solverCombinations
-        ? `
-      <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;padding:11px 16px;background:var(--ink);border-radius:var(--rad);color:var(--bg)">
-        <div style="width:28px;height:28px;border-radius:50%;background:var(--terra);flex-shrink:0;display:flex;align-items:center;justify-content:center">
-          <i data-lucide="check" style="width:14px;height:14px;color:#fff"></i>
-        </div>
-        <div style="flex:1;min-width:0">
-          <span style="font-weight:600;font-size:13px;color:var(--terra)">Optimal assignment</span>
-          <span style="font-size:12px;color:oklch(0.72 0.01 60);margin-left:8px">Best possible arrangement out of ${solverCombinations} combinations · found in ${solverElapsed}s</span>
-        </div>
-      </div>
-    `
-        : ""
-    }
 
     <!-- Edit Mode Controls -->
     ${
@@ -4360,6 +4704,7 @@ window.showImportModal = showImportModal;
 window.closeImportModal = closeImportModal;
 window.closeBalanceInfoModal = closeBalanceInfoModal;
 window.updateWeight = updateWeight;
+window.resetWeightsToDefaults = resetWeightsToDefaults;
 window.updateMaxGrade = updateMaxGrade;
 window.toggleProperty = toggleProperty;
 window.runAssignment = runAssignment;
@@ -4717,6 +5062,7 @@ function closeBalanceExplanationModal() {
 
 window.showBalanceExplanationModal = showBalanceExplanationModal;
 window.closeBalanceExplanationModal = closeBalanceExplanationModal;
+window.toggleBalanceStatsView = toggleBalanceStatsView;
 
 // Edit mode functions
 async function toggleEditMode(enabled) {

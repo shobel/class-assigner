@@ -3,10 +3,11 @@
   "activation_code": "ABCD-1234-EFGH",
   "active_school_year": "2025\u201326",
   "available_school_years": [
-    "2025\u201326"
+    "2025\u201326",
+    "2026\u201327"
   ],
   "current_school_year": "2025\u201326",
-  "friend_weight": 30,
+  "friend_weight": 20,
   "max_grade": "5th Grade",
   "properties": [
     {
@@ -19,7 +20,7 @@
         "g",
         "b"
       ],
-      "weight": 40
+      "weight": 60
     },
     {
       "display_name": "Behavior",
@@ -121,13 +122,13 @@
       "type": "hard_toggle"
     },
     {
-      "name": "test",
-      "display_name": "test",
-      "type": "boolean",
       "constraint": "soft",
-      "weight": 60,
+      "custom": true,
+      "display_name": "test",
       "enabled": true,
-      "custom": true
+      "name": "test",
+      "type": "boolean",
+      "weight": 60
     }
   ],
   "school_name": "Cedar Wood Elementary",

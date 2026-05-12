@@ -135,60 +135,83 @@ function renderTransitionGrades() {
           <span class="count">${activeStudents.length} student${activeStudents.length !== 1 ? 's' : ''}</span>
         </div>
 
-        <div class="transition-grade-actions">
-          ${gradeName === 'Kindergarten' ? `
-            <label class="btn sm ghost" style="cursor: pointer;">
+        ${gradeName === 'Kindergarten' ? `
+          <div class="transition-grade-actions">
+            <label class="btn" style="cursor: pointer;">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style="flex-shrink: 0;">
+                <path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+              </svg>
               Import CSV
               <input type="file" accept=".csv" style="display:none" onchange="importKindergartenCSV(event, '${gradeName}')">
             </label>
-          ` : ''}
-          <button class="btn sm ghost" onclick="toggleAddStudent('${gradeName}')">+ Add student</button>
-        </div>
+          </div>
+        ` : ''}
 
-        <div class="add-student-form" id="add-form-${gradeName}">
-          <div class="form-row">
-            <input type="text" placeholder="First name" id="fname-${gradeName}">
-            <input type="text" placeholder="Last name" id="lname-${gradeName}">
-          </div>
-          <div class="form-row">
-            <select id="gender-${gradeName}" style="height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--rad); background: var(--panel); color: var(--ink); font: inherit; font-size: 12px;">
-              <option value="g">Girl</option>
-              <option value="b">Boy</option>
-            </select>
-            <select id="math-${gradeName}" style="height: 28px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--rad); background: var(--panel); color: var(--ink); font: inherit; font-size: 12px;">
-              <option value="m">Math: Medium</option>
-              <option value="h">Math: High</option>
-              <option value="l">Math: Low</option>
-            </select>
-          </div>
-          <div class="form-actions">
-            <button class="btn sm ghost" onclick="toggleAddStudent('${gradeName}')">Cancel</button>
-            <button class="btn sm primary" onclick="addStudent('${gradeName}')">Add</button>
-          </div>
-        </div>
-
-        <div class="transition-students">
+        <div
+          class="transition-students"
+          ondragover="handleDragOver(event)"
+          ondrop="handleDrop(event, '${gradeName}')"
+          ondragenter="handleDragEnter(event)"
+          ondragleave="handleDragLeave(event)"
+        >
           ${students.length === 0 ? `
-            <div class="empty-grade">No students yet. Import CSV or add individually.</div>
+            <div class="empty-grade">No students yet${gradeName === 'Kindergarten' ? '. Import CSV' : ''}.</div>
           ` : students.map((s, idx) => {
             const initials = s.name.split(' ').map(n => n[0]).join('');
+            const displayName = s.name.toLowerCase();
+            const searchTerm = (window.transitionSearchTerm || '').toLowerCase();
+            const isVisible = !searchTerm || displayName.includes(searchTerm);
+
+            // Build flags array
+            const flags = [];
+            if (s.iep) flags.push('IEP');
+            if (s['504']) flags.push('504');
+            if (s.esl) flags.push('ESL');
+            if (s.gate) flags.push('GATE');
+
             return `
-              <div class="transition-student ${s.removed ? 'removed' : ''}" id="student-${gradeName}-${idx}">
-                <div class="avatar ${s.gender}">${initials}</div>
-                <div class="name">${s.name}</div>
-                ${s.fromGrade ? `<span style="font-size: 10px; color: var(--ink-4);">from ${s.fromGrade}</span>` : ''}
-                ${s.isNew ? `<span class="chip" style="background: var(--sage-soft); color: var(--sage-ink); font-size: 9px;">NEW</span>` : ''}
+              <div
+                class="transition-student ${s.removed ? 'removed' : ''} ${!isVisible ? 'hidden' : ''}"
+                id="student-${gradeName}-${idx}"
+                draggable="${!s.removed ? 'true' : 'false'}"
+                ondragstart="handleDragStart(event, '${gradeName}', ${idx})"
+                ondragend="handleDragEnd(event)"
+              >
+                <div class="student-main">
+                  <div class="drag-handle">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                      <circle cx="5" cy="4" r="1" fill="currentColor"/>
+                      <circle cx="5" cy="8" r="1" fill="currentColor"/>
+                      <circle cx="5" cy="12" r="1" fill="currentColor"/>
+                      <circle cx="11" cy="4" r="1" fill="currentColor"/>
+                      <circle cx="11" cy="8" r="1" fill="currentColor"/>
+                      <circle cx="11" cy="12" r="1" fill="currentColor"/>
+                    </svg>
+                  </div>
+                  <div class="avatar ${s.gender}">${initials}</div>
+                  <div class="student-info">
+                    <div class="name">${s.name}</div>
+                    ${s.fromGrade ? `<div class="from-grade">from ${s.fromGrade}</div>` : ''}
+                  </div>
+                  ${s.isNew ? `<span class="chip-new">NEW</span>` : ''}
+                </div>
+                <div class="student-flags">
+                  ${flags.map(flag => `<span class="flag-chip">${flag}</span>`).join('')}
+                </div>
                 <div class="actions">
                   ${!s.removed ? `
-                    <select class="btn-tiny" style="height: auto; padding: 2px 4px;" onchange="moveStudent('${gradeName}', ${idx}, this.value)">
-                      <option value="">Move to...</option>
-                      ${gradeOrder.filter(g => g !== gradeName && transitionData.grades[g]).map(g =>
-                        `<option value="${g}">${g}</option>`
-                      ).join('')}
-                    </select>
-                    <button class="btn-tiny ghost" onclick="removeStudent('${gradeName}', ${idx})">✕</button>
+                    <button class="student-remove-btn" onclick="removeStudent('${gradeName}', ${idx})" title="Remove student">
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
+                        <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                      </svg>
+                    </button>
                   ` : `
-                    <button class="btn-tiny ghost" onclick="restoreStudent('${gradeName}', ${idx})">↶ Undo</button>
+                    <button class="student-undo-btn" onclick="restoreStudent('${gradeName}', ${idx})">
+                      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" style="margin-right: 4px;">
+                        <path d="M3 8h10M6 5l-3 3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                      Undo
+                    </button>
                   `}
                 </div>
               </div>
@@ -202,47 +225,92 @@ function renderTransitionGrades() {
   updateStudentCount();
 }
 
-function toggleAddStudent(gradeName) {
-  const form = document.getElementById(`add-form-${gradeName}`);
-  form.classList.toggle('open');
-}
+function searchTransitionStudents(searchTerm) {
+  window.transitionSearchTerm = searchTerm;
 
-function addStudent(gradeName) {
-  const fname = document.getElementById(`fname-${gradeName}`).value.trim();
-  const lname = document.getElementById(`lname-${gradeName}`).value.trim();
-  const gender = document.getElementById(`gender-${gradeName}`).value;
-  const math = document.getElementById(`math-${gradeName}`).value;
-
-  if (!fname || !lname) {
-    showNotice('Please enter first and last name', 'error');
-    return;
+  // Show/hide clear button
+  const clearBtn = document.getElementById('transitionSearchClear');
+  if (clearBtn) {
+    clearBtn.style.display = searchTerm ? 'flex' : 'none';
   }
 
-  const newStudent = {
-    name: `${fname} ${lname}`,
-    gender: gender,
-    behavior: 'neutral',
-    independence: 'neutral',
-    iep: false,
-    '504': false,
-    esl: false,
-    gate: false,
-    math: math,
-    reading: 'm',
-    friends: '',
-    incompatible: '',
-    removed: false,
-    isNew: true
-  };
-
-  transitionData.grades[gradeName].push(newStudent);
-
-  // Clear form
-  document.getElementById(`fname-${gradeName}`).value = '';
-  document.getElementById(`lname-${gradeName}`).value = '';
-
-  toggleAddStudent(gradeName);
   renderTransitionGrades();
+}
+
+function clearTransitionSearch() {
+  const input = document.getElementById('transitionSearchInput');
+  if (input) {
+    input.value = '';
+    searchTransitionStudents('');
+  }
+}
+
+// Drag and drop handlers
+let draggedTransitionStudent = null;
+
+function handleDragStart(event, gradeName, idx) {
+  draggedTransitionStudent = { gradeName, idx };
+  event.target.classList.add('dragging');
+  event.dataTransfer.effectAllowed = 'move';
+  event.dataTransfer.setData('text/html', event.target.innerHTML);
+}
+
+function handleDragEnd(event) {
+  event.target.classList.remove('dragging');
+  // Remove all drag-over classes
+  document.querySelectorAll('.transition-students').forEach(el => {
+    el.classList.remove('drag-over');
+  });
+}
+
+function handleDragOver(event) {
+  if (event.preventDefault) {
+    event.preventDefault();
+  }
+  event.dataTransfer.dropEffect = 'move';
+  return false;
+}
+
+function handleDragEnter(event) {
+  if (event.currentTarget.classList.contains('transition-students')) {
+    event.currentTarget.classList.add('drag-over');
+  }
+}
+
+function handleDragLeave(event) {
+  if (event.currentTarget.classList.contains('transition-students') &&
+      !event.currentTarget.contains(event.relatedTarget)) {
+    event.currentTarget.classList.remove('drag-over');
+  }
+}
+
+function handleDrop(event, toGrade) {
+  if (event.stopPropagation) {
+    event.stopPropagation();
+  }
+  event.preventDefault();
+
+  event.currentTarget.classList.remove('drag-over');
+
+  if (!draggedTransitionStudent) return false;
+
+  const { gradeName: fromGrade, idx } = draggedTransitionStudent;
+
+  // Don't do anything if dropping in the same grade
+  if (fromGrade === toGrade) {
+    draggedTransitionStudent = null;
+    return false;
+  }
+
+  // Move the student
+  const student = transitionData.grades[fromGrade][idx];
+  transitionData.grades[toGrade].push({ ...student, fromGrade: fromGrade });
+  transitionData.grades[fromGrade].splice(idx, 1);
+
+  draggedTransitionStudent = null;
+  renderTransitionGrades();
+
+  return false;
 }
 
 function moveStudent(fromGrade, idx, toGrade) {
@@ -366,9 +434,15 @@ async function confirmTransition() {
 window.showTransitionWizard = showTransitionWizard;
 window.closeTransitionWizard = closeTransitionWizard;
 window.confirmTransition = confirmTransition;
-window.toggleAddStudent = toggleAddStudent;
-window.addStudent = addStudent;
 window.moveStudent = moveStudent;
 window.removeStudent = removeStudent;
 window.restoreStudent = restoreStudent;
 window.importKindergartenCSV = importKindergartenCSV;
+window.searchTransitionStudents = searchTransitionStudents;
+window.clearTransitionSearch = clearTransitionSearch;
+window.handleDragStart = handleDragStart;
+window.handleDragEnd = handleDragEnd;
+window.handleDragOver = handleDragOver;
+window.handleDragEnter = handleDragEnter;
+window.handleDragLeave = handleDragLeave;
+window.handleDrop = handleDrop;

@@ -733,6 +733,7 @@ def api_grade_assignments(grade_id):
         'solver_elapsed': grade_data.get('solver_elapsed'),
         'solver_combinations': grade_data.get('solver_combinations'),
         'class_names': grade_data.get('class_names', {}),
+        'assignment_config': grade_data.get('assignment_config'),
     })
 
 
@@ -1121,6 +1122,15 @@ def api_assign(grade_id):
         students_data[grade_name]['solver_status'] = solver_result.get('status') if solver_result else None
         students_data[grade_name]['solver_elapsed'] = solver_result.get('elapsed') if solver_result else None
         students_data[grade_name]['solver_combinations'] = combinations
+
+        # Save a snapshot of the config at assignment time
+        config = load_config()
+        students_data[grade_name]['assignment_config'] = {
+            'properties': config.get('properties', []),
+            'friend_weight': config.get('friend_weight', 30),
+            'timestamp': pd.Timestamp.now().isoformat()
+        }
+
         # Save auto-assigned teachers if the solver produced them
         teacher_assignments = solver_result.get('teacher_assignments', []) if solver_result else []
         if teacher_assignments:

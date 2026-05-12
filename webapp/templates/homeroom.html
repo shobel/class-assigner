@@ -1,385 +1,982 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Classify · Class Assignment Optimizer</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com"/>
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-    <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet"/>
-    <link rel="stylesheet" href="/static/css/homeroom.css">
-    <link rel="stylesheet" href="/static/css/homeroom-full.css">
-    <link rel="stylesheet" href="/static/css/homeroom-detail.css">
-    <link rel="stylesheet" href="/static/css/transition.css">
-    <link rel="stylesheet" href="/static/css/onboarding.css">
-    <link rel="stylesheet" href="/static/css/toggle.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="/static/css/homeroom.css" />
+    <link rel="stylesheet" href="/static/css/homeroom-full.css" />
+    <link rel="stylesheet" href="/static/css/homeroom-detail.css" />
+    <link rel="stylesheet" href="/static/css/transition.css" />
+    <link rel="stylesheet" href="/static/css/onboarding.css" />
+    <link rel="stylesheet" href="/static/css/toggle.css" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
-</head>
-<body>
+  </head>
+  <body>
     <!-- Activation overlay — shown before app loads if not yet activated -->
     <div id="activation-overlay">
       <div id="activation-box">
-        <div style="font-family:'Instrument Serif',serif;font-size:32px;font-style:italic;margin-bottom:6px">
-          <span style="color:var(--terra)">Class</span>ify
+        <div
+          style="
+            font-family: &quot;Instrument Serif&quot;, serif;
+            font-size: 32px;
+            font-style: italic;
+            margin-bottom: 6px;
+          "
+        >
+          <span style="color: var(--terra)">Class</span>ify
         </div>
-        <div style="font-size:13px;color:var(--ink-3);margin-bottom:28px">Enter your activation code to get started</div>
-        <input id="activation-input" type="text" placeholder="XXXX-XXXX-XXXX"
-          style="width:100%;box-sizing:border-box;padding:11px 14px;border:1.5px solid var(--line);border-radius:8px;
-                 font-size:15px;letter-spacing:0.08em;text-align:center;text-transform:uppercase;
-                 background:var(--bg-2);color:var(--ink);outline:none;font-family:var(--t-mono)"
-          oninput="this.value=this.value.toUpperCase()"
-          onkeydown="if(event.key==='Enter')submitActivationCode()">
-        <div id="activation-error" style="display:none;margin-top:10px;font-size:12px;color:var(--rose);text-align:center"></div>
-        <button id="activation-btn" onclick="submitActivationCode()"
-          style="margin-top:16px;width:100%;padding:11px;background:var(--terra);color:#fff;border:none;
-                 border-radius:8px;font-size:14px;font-weight:500;cursor:pointer">
+        <div style="font-size: 13px; color: var(--ink-3); margin-bottom: 28px">
+          Enter your activation code to get started
+        </div>
+        <input
+          id="activation-input"
+          type="text"
+          placeholder="XXXX-XXXX-XXXX"
+          style="
+            width: 100%;
+            box-sizing: border-box;
+            padding: 11px 14px;
+            border: 1.5px solid var(--line);
+            border-radius: 8px;
+            font-size: 15px;
+            letter-spacing: 0.08em;
+            text-align: center;
+            text-transform: uppercase;
+            background: var(--bg-2);
+            color: var(--ink);
+            outline: none;
+            font-family: var(--t-mono);
+          "
+          oninput="this.value = this.value.toUpperCase()"
+          onkeydown="if (event.key === 'Enter') submitActivationCode();"
+        />
+        <div
+          id="activation-error"
+          style="
+            display: none;
+            margin-top: 10px;
+            font-size: 12px;
+            color: var(--rose);
+            text-align: center;
+          "
+        ></div>
+        <button
+          id="activation-btn"
+          onclick="submitActivationCode()"
+          style="
+            margin-top: 16px;
+            width: 100%;
+            padding: 11px;
+            background: var(--terra);
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+          "
+        >
           Activate
         </button>
-        <div style="margin-top:20px;font-size:11px;color:var(--ink-4);text-align:center">
+        <div
+          style="
+            margin-top: 20px;
+            font-size: 11px;
+            color: var(--ink-4);
+            text-align: center;
+          "
+        >
           Need a code? Contact your administrator.
         </div>
       </div>
     </div>
 
     <div class="app" id="app">
-        <!-- Sidebar -->
-        <aside class="sidebar">
-            <div class="brand">
-                <div class="brand-mark">C</div>
-                <div>
-                    <div class="brand-name"><span class="brand-class">Class</span>ify</div>
-                    <div id="brand-school-name" style="font-size:11px;color:var(--ink-3);margin-top:1px;line-height:1"></div>
-                </div>
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark">C</div>
+          <div>
+            <div class="brand-name">
+              <span class="brand-class">Class</span>ify
             </div>
-
-            <div class="nav" style="margin-bottom: 4px;">
-                <div class="nav-item" id="nav-welcome" onclick="showScreen('welcome')">
-                    <svg class="nav-icon" width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                        <path d="M3 2h8a1 1 0 011 1v8a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1zm2 3h4v1H5V5zm0 2h4v1H5V7z"/>
-                    </svg>
-                    <span class="nav-label">Getting started</span>
-                </div>
-                <div class="nav-item" id="nav-config" onclick="showScreen('config')">
-                    <svg class="nav-icon" width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                        <path d="M7 9a2 2 0 100-4 2 2 0 000 4z"/>
-                        <path d="M12 7c0-.34-.03-.67-.08-1h1.33l-.75-1.3-1.33.77a5 5 0 00-1.42-1.42l.77-1.33-1.3-.75-1 1.33a5 5 0 00-2 0l-1-1.33-1.3.75.77 1.33a5 5 0 00-1.42 1.42l-1.33-.77-.75 1.3h1.33c-.05.33-.08.66-.08 1s.03.67.08 1H.25l.75 1.3 1.33-.77a5 5 0 001.42 1.42l-.77 1.33 1.3.75 1-1.33a5 5 0 002 0l1 1.33 1.3-.75-.77-1.33a5 5 0 001.42-1.42l1.33.77.75-1.3h-1.33c.05-.33.08-.66.08-1z"/>
-                    </svg>
-                    <span class="nav-label">Rules & weights</span>
-                </div>
-                <div class="nav-item" id="nav-school-config" onclick="showScreen('school-config')">
-                    <svg class="nav-icon" width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                        <path d="M7 1L1 4v1h12V4L7 1zM2 6v5h2V6H2zm4 0v5h2V6H6zm4 0v5h2V6h-2zM1 12h12v1H1v-1z"/>
-                    </svg>
-                    <span class="nav-label">School config</span>
-                </div>
-            </div>
-
-            <div class="side-section">
-                School years
-                <button title="Create next school year" onclick="createNextYear()">↗</button>
-            </div>
-            <div class="nav" id="schoolYearNav" style="padding: 0 8px; margin-bottom: 12px;">
-                <!-- School years will be loaded here -->
-            </div>
-
-            <div class="side-section">
-                Grades
-                <button title="Add grade" onclick="openAddGradeModal()">+</button>
-            </div>
-            <div class="nav" style="padding: 0; gap: 0" id="gradeNav">
-                <!-- Grades will be loaded here -->
-            </div>
-
-            <div style="flex:1"></div>
-            <div class="side-section" style="border-top:1px solid var(--line-soft); margin-top: 8px; padding-top: 12px; padding-bottom: 12px;">
-                <span style="text-transform:none; letter-spacing:0; font-family:var(--t-ui); font-size:11px; display:flex; align-items:center; gap:6px">
-                    <i data-lucide="lock" style="width:11px;height:11px;flex-shrink:0"></i>
-                    All data stays on this device
-                </span>
-            </div>
-        </aside>
-
-        <!-- Topbar -->
-        <div class="topbar">
-            <div class="crumbs">
-                <span id="crumb-school">School</span>
-                <span class="sep">/</span>
-                <span id="crumb-grade">...</span>
-                <span class="sep">/</span>
-                <span class="cur" id="crumb-screen">...</span>
-            </div>
-            <div class="topbar-spacer"></div>
+            <div
+              id="brand-school-name"
+              style="
+                font-size: 11px;
+                color: var(--ink-3);
+                margin-top: 1px;
+                line-height: 1;
+              "
+            ></div>
+          </div>
         </div>
 
-        <!-- Main -->
-        <main class="main" id="mainContent">
-            <!-- Content will be loaded here -->
+        <div class="nav" style="margin-bottom: 4px">
+          <div
+            class="nav-item"
+            id="nav-welcome"
+            onclick="showScreen('welcome')"
+          >
+            <svg
+              class="nav-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="currentColor"
+            >
+              <path
+                d="M3 2h8a1 1 0 011 1v8a1 1 0 01-1 1H3a1 1 0 01-1-1V3a1 1 0 011-1zm2 3h4v1H5V5zm0 2h4v1H5V7z"
+              />
+            </svg>
+            <span class="nav-label">Getting started</span>
+          </div>
+          <div class="nav-item" id="nav-config" onclick="showScreen('config')">
+            <svg
+              class="nav-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="currentColor"
+            >
+              <path d="M7 9a2 2 0 100-4 2 2 0 000 4z" />
+              <path
+                d="M12 7c0-.34-.03-.67-.08-1h1.33l-.75-1.3-1.33.77a5 5 0 00-1.42-1.42l.77-1.33-1.3-.75-1 1.33a5 5 0 00-2 0l-1-1.33-1.3.75.77 1.33a5 5 0 00-1.42 1.42l-1.33-.77-.75 1.3h1.33c-.05.33-.08.66-.08 1s.03.67.08 1H.25l.75 1.3 1.33-.77a5 5 0 001.42 1.42l-.77 1.33 1.3.75 1-1.33a5 5 0 002 0l1 1.33 1.3-.75-.77-1.33a5 5 0 001.42-1.42l1.33.77.75-1.3h-1.33c.05-.33.08-.66.08-1z"
+              />
+            </svg>
+            <span class="nav-label">Rules & weights</span>
+          </div>
+          <div
+            class="nav-item"
+            id="nav-school-config"
+            onclick="showScreen('school-config')"
+          >
+            <svg
+              class="nav-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="currentColor"
+            >
+              <path
+                d="M7 1L1 4v1h12V4L7 1zM2 6v5h2V6H2zm4 0v5h2V6H6zm4 0v5h2V6h-2zM1 12h12v1H1v-1z"
+              />
+            </svg>
+            <span class="nav-label">School config</span>
+          </div>
+        </div>
 
-            <!-- Detail Panel (slides in from right) -->
-            <div class="detail" id="detailPanel">
-                <!-- Student detail will be loaded here -->
-            </div>
-        </main>
+        <div class="side-section">
+          School years
+          <button title="Create next school year" onclick="createNextYear()">
+            ↗
+          </button>
+        </div>
+        <div
+          class="nav"
+          id="schoolYearNav"
+          style="padding: 0 8px; margin-bottom: 12px"
+        >
+          <!-- School years will be loaded here -->
+        </div>
+
+        <div class="side-section">
+          Grades
+          <button title="Add grade" onclick="openAddGradeModal()">+</button>
+        </div>
+        <div class="nav" style="padding: 0; gap: 0" id="gradeNav">
+          <!-- Grades will be loaded here -->
+        </div>
+
+        <div style="flex: 1"></div>
+        <div
+          class="side-section"
+          style="
+            border-top: 1px solid var(--line-soft);
+            margin-top: 8px;
+            padding-top: 12px;
+            padding-bottom: 12px;
+          "
+        >
+          <span
+            style="
+              text-transform: none;
+              letter-spacing: 0;
+              font-family: var(--t-ui);
+              font-size: 11px;
+              display: flex;
+              align-items: center;
+              gap: 6px;
+            "
+          >
+            <i
+              data-lucide="lock"
+              style="width: 11px; height: 11px; flex-shrink: 0"
+            ></i>
+            All data stays on this device
+          </span>
+        </div>
+      </aside>
+
+      <!-- Topbar -->
+      <div class="topbar">
+        <div class="crumbs">
+          <span id="crumb-school">School</span>
+          <span class="sep">/</span>
+          <span id="crumb-grade">...</span>
+          <span class="sep">/</span>
+          <span class="cur" id="crumb-screen">...</span>
+        </div>
+        <div class="topbar-spacer"></div>
+      </div>
+
+      <!-- Main -->
+      <main class="main" id="mainContent">
+        <!-- Content will be loaded here -->
+
+        <!-- Detail Panel (slides in from right) -->
+        <div class="detail" id="detailPanel">
+          <!-- Student detail will be loaded here -->
+        </div>
+      </main>
     </div>
 
     <!-- Modals -->
     <div id="configModal" class="modal">
-        <div class="modal-content modal-large">
-            <div class="modal-header">
-                <h2>Assignment Rules Configuration</h2>
-                <button class="btn-close" onclick="closeConfigModal()">×</button>
-            </div>
-            <div class="modal-body" id="configModalBody">
-                <!-- Config content -->
-            </div>
+      <div class="modal-content modal-large">
+        <div class="modal-header">
+          <h2>Assignment Rules Configuration</h2>
+          <button class="btn-close" onclick="closeConfigModal()">×</button>
         </div>
+        <div class="modal-body" id="configModalBody">
+          <!-- Config content -->
+        </div>
+      </div>
     </div>
 
     <div id="importModal" class="modal">
-        <div class="modal-content modal-large">
-            <div class="modal-header">
-                <h2>Import Student Data</h2>
-                <button class="btn-close" onclick="closeImportModal()">×</button>
-            </div>
-            <div class="modal-body" id="importModalBody">
-                <!-- Import content -->
-            </div>
+      <div class="modal-content modal-large">
+        <div class="modal-header">
+          <h2>Import Student Data</h2>
+          <button class="btn-close" onclick="closeImportModal()">×</button>
         </div>
+        <div class="modal-body" id="importModalBody">
+          <!-- Import content -->
+        </div>
+      </div>
     </div>
 
     <div id="balanceInfoModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>Understanding Balance Metrics</h2>
-                <button class="btn-close" onclick="closeBalanceInfoModal()">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="info-section">
-                    <h4>What is "Balance"?</h4>
-                    <p>Balance measures how evenly students are distributed across classes. Perfect balance means each class has similar numbers of students in each category.</p>
-                </div>
-                <div class="info-section">
-                    <h4>Balance Quality Ratings</h4>
-                    <ul>
-                        <li><strong>Perfect:</strong> Nearly identical distribution across all classes</li>
-                        <li><strong>Excellent:</strong> Very minor differences between classes</li>
-                        <li><strong>Good:</strong> Some variation but still well-balanced</li>
-                        <li><strong>Fair:</strong> Noticeable differences between classes</li>
-                    </ul>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-primary" onclick="closeBalanceInfoModal()">Got it!</button>
-            </div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2>Understanding Balance Metrics</h2>
+          <button class="btn-close" onclick="closeBalanceInfoModal()">×</button>
         </div>
+        <div class="modal-body">
+          <div class="info-section">
+            <h4>What is "Balance"?</h4>
+            <p>
+              Balance measures how evenly students are distributed across
+              classes. Perfect balance means each class has similar numbers of
+              students in each category.
+            </p>
+          </div>
+          <div class="info-section">
+            <h4>Balance Quality Ratings</h4>
+            <ul>
+              <li>
+                <strong>Perfect:</strong> Nearly identical distribution across
+                all classes
+              </li>
+              <li>
+                <strong>Excellent:</strong> Very minor differences between
+                classes
+              </li>
+              <li>
+                <strong>Good:</strong> Some variation but still well-balanced
+              </li>
+              <li>
+                <strong>Fair:</strong> Noticeable differences between classes
+              </li>
+            </ul>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn btn-primary" onclick="closeBalanceInfoModal()">
+            Got it!
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Balance Explanation Modal -->
     <div id="balanceExplanationModal" class="modal">
-        <div class="modal-content modal-large">
-            <div class="modal-header">
-                <h2>Understanding Balance Statistics</h2>
-                <button class="btn-close" onclick="closeBalanceExplanationModal()">×</button>
-            </div>
-            <div class="modal-body">
-                <div class="info-section">
-                    <h4>What do the numbers mean?</h4>
-                    <p>Each property (like IEP, gender, math level) shows how evenly students are distributed across classes using <strong>standard deviation (σ)</strong>.</p>
-                    <ul>
-                        <li><strong>σ = 0:</strong> Perfect balance (all classes have equal numbers)</li>
-                        <li><strong>Higher σ:</strong> More unbalanced (some classes have more, some have fewer)</li>
-                    </ul>
-                </div>
-
-                <div class="info-section">
-                    <h4>The Balance Slider</h4>
-                    <p>Each value shows a visual slider with three key points:</p>
-
-                    <!-- Visual example -->
-                    <div style="background: var(--bg-2); padding: 16px; border-radius: 8px; margin: 12px 0;">
-                        <div style="font-size: 11px; color: var(--ink-3); margin-bottom: 8px;">Example: IEP (10 total students across 5 classes)</div>
-
-                        <!-- Perfect case -->
-                        <div style="margin-bottom: 16px;">
-                            <div style="font-size: 10px; font-weight: 600; margin-bottom: 4px;">Perfect balance: σ = 0.00</div>
-                            <div style="position: relative; height: 20px; margin-bottom: 6px;">
-                                <div style="position: absolute; top: 9px; left: 0; right: 0; height: 4px; background: linear-gradient(to right, var(--terra), var(--amber), var(--rose)); border-radius: 2px; opacity: 0.3;"></div>
-                                <div style="position: absolute; left: 0; top: 7px; width: 2px; height: 8px; background: var(--terra); border-radius: 1px;"></div>
-                                <div style="position: absolute; right: 0; top: 7px; width: 2px; height: 8px; background: var(--rose); border-radius: 1px;"></div>
-                                <div style="position: absolute; left: 0%; top: 6px; transform: translateX(-50%); width: 10px; height: 10px; background: var(--terra); border: 2px solid var(--panel); border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"></div>
-                            </div>
-                            <div style="display: flex; gap: 4px; font-size: 11px;">
-                                <div style="flex: 1; text-align: center; padding: 4px; background: var(--bg-3); border-radius: 4px;">2</div>
-                                <div style="flex: 1; text-align: center; padding: 4px; background: var(--bg-3); border-radius: 4px;">2</div>
-                                <div style="flex: 1; text-align: center; padding: 4px; background: var(--bg-3); border-radius: 4px;">2</div>
-                                <div style="flex: 1; text-align: center; padding: 4px; background: var(--bg-3); border-radius: 4px;">2</div>
-                                <div style="flex: 1; text-align: center; padding: 4px; background: var(--bg-3); border-radius: 4px;">2</div>
-                            </div>
-                            <div style="font-size: 9px; color: var(--terra); margin-top: 4px;">Dot on the left = perfectly balanced</div>
-                        </div>
-
-                        <!-- Medium case -->
-                        <div style="margin-bottom: 16px;">
-                            <div style="font-size: 10px; font-weight: 600; margin-bottom: 4px;">Slightly unbalanced: σ = 1.10</div>
-                            <div style="position: relative; height: 20px; margin-bottom: 6px;">
-                                <div style="position: absolute; top: 9px; left: 0; right: 0; height: 4px; background: linear-gradient(to right, var(--terra), var(--amber), var(--rose)); border-radius: 2px; opacity: 0.3;"></div>
-                                <div style="position: absolute; left: 0; top: 7px; width: 2px; height: 8px; background: var(--terra); border-radius: 1px;"></div>
-                                <div style="position: absolute; right: 0; top: 7px; width: 2px; height: 8px; background: var(--rose); border-radius: 1px;"></div>
-                                <div style="position: absolute; left: 25%; top: 6px; transform: translateX(-50%); width: 10px; height: 10px; background: var(--ink); border: 2px solid var(--panel); border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"></div>
-                            </div>
-                            <div style="display: flex; gap: 4px; font-size: 11px;">
-                                <div style="flex: 1; text-align: center; padding: 4px; background: var(--bg-3); border-radius: 4px;">3</div>
-                                <div style="flex: 1; text-align: center; padding: 4px; background: var(--bg-3); border-radius: 4px;">2</div>
-                                <div style="flex: 1; text-align: center; padding: 4px; background: var(--bg-3); border-radius: 4px;">2</div>
-                                <div style="flex: 1; text-align: center; padding: 4px; background: var(--bg-3); border-radius: 4px;">2</div>
-                                <div style="flex: 1; text-align: center; padding: 4px; background: var(--rose-soft); border-radius: 4px;">1</div>
-                            </div>
-                            <div style="font-size: 9px; color: var(--ink-3); margin-top: 4px;">Dot moved right = less balanced</div>
-                        </div>
-
-                        <!-- Worst case -->
-                        <div>
-                            <div style="font-size: 10px; font-weight: 600; margin-bottom: 4px;">Worst case: σ = 4.00</div>
-                            <div style="position: relative; height: 20px; margin-bottom: 6px;">
-                                <div style="position: absolute; top: 9px; left: 0; right: 0; height: 4px; background: linear-gradient(to right, var(--terra), var(--amber), var(--rose)); border-radius: 2px; opacity: 0.3;"></div>
-                                <div style="position: absolute; left: 0; top: 7px; width: 2px; height: 8px; background: var(--terra); border-radius: 1px;"></div>
-                                <div style="position: absolute; right: 0; top: 7px; width: 2px; height: 8px; background: var(--rose); border-radius: 1px;"></div>
-                                <div style="position: absolute; left: 100%; top: 6px; transform: translateX(-50%); width: 10px; height: 10px; background: var(--rose); border: 2px solid var(--panel); border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.2);"></div>
-                            </div>
-                            <div style="display: flex; gap: 4px; font-size: 11px;">
-                                <div style="flex: 1; text-align: center; padding: 4px; background: var(--rose-soft); border-radius: 4px;">10</div>
-                                <div style="flex: 1; text-align: center; padding: 4px; background: var(--bg-3); border-radius: 4px;">0</div>
-                                <div style="flex: 1; text-align: center; padding: 4px; background: var(--bg-3); border-radius: 4px;">0</div>
-                                <div style="flex: 1; text-align: center; padding: 4px; background: var(--bg-3); border-radius: 4px;">0</div>
-                                <div style="flex: 1; text-align: center; padding: 4px; background: var(--bg-3); border-radius: 4px;">0</div>
-                            </div>
-                            <div style="font-size: 9px; color: var(--rose); margin-top: 4px;">Dot on the right = all students in one class</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="info-section">
-                    <h4>Theoretical Minimum (min)</h4>
-                    <p>The <strong>theoretical minimum</strong> is the best possible balance for your roster. If students divide evenly, it's 0. If not (e.g., 11 students across 5 classes), some classes must have more than others, so the minimum is slightly higher.</p>
-                    <p><strong>Goal:</strong> Get your dot as close to the left (min) as possible.</p>
-                </div>
-
-                <div class="info-section">
-                    <h4>Theoretical Maximum (max)</h4>
-                    <p>The <strong>theoretical maximum</strong> is the worst-case scenario where all students of that type are in a single class. This is the right edge of the slider.</p>
-                </div>
-
-                <div class="info-section">
-                    <h4>Using This While Dragging Students</h4>
-                    <p>As you drag students between classes, watch the sliders update in real-time. Try to move dots toward the left (green) side to improve balance!</p>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn primary" onclick="closeBalanceExplanationModal()">Got it!</button>
-            </div>
+      <div class="modal-content modal-large">
+        <div class="modal-header">
+          <h2>Understanding Balance Statistics</h2>
+          <button class="btn-close" onclick="closeBalanceExplanationModal()">
+            ×
+          </button>
         </div>
+        <div class="modal-body">
+          <div class="info-section">
+            <h4>What do the numbers mean?</h4>
+            <p>
+              Each property (like IEP, gender, math level) shows how evenly
+              students are distributed across classes using
+              <strong>standard deviation (σ)</strong>.
+            </p>
+            <ul>
+              <li>
+                <strong>σ = 0:</strong> Perfect balance (all classes have equal
+                numbers)
+              </li>
+              <li>
+                <strong>Higher σ:</strong> More unbalanced (some classes have
+                more, some have fewer)
+              </li>
+            </ul>
+          </div>
+
+          <div class="info-section">
+            <h4>The Balance Slider</h4>
+            <p>Each value shows a visual slider with three key points:</p>
+
+            <!-- Visual example -->
+            <div
+              style="
+                background: var(--bg-2);
+                padding: 16px;
+                border-radius: 8px;
+                margin: 12px 0;
+              "
+            >
+              <div
+                style="font-size: 11px; color: var(--ink-3); margin-bottom: 8px"
+              >
+                Example: IEP (10 total students across 5 classes)
+              </div>
+
+              <!-- Perfect case -->
+              <div style="margin-bottom: 16px">
+                <div
+                  style="font-size: 10px; font-weight: 600; margin-bottom: 4px"
+                >
+                  Perfect balance: σ = 0.00
+                </div>
+                <div
+                  style="position: relative; height: 20px; margin-bottom: 6px"
+                >
+                  <div
+                    style="
+                      position: absolute;
+                      top: 9px;
+                      left: 0;
+                      right: 0;
+                      height: 4px;
+                      background: linear-gradient(
+                        to right,
+                        var(--terra),
+                        var(--amber),
+                        var(--rose)
+                      );
+                      border-radius: 2px;
+                      opacity: 0.3;
+                    "
+                  ></div>
+                  <div
+                    style="
+                      position: absolute;
+                      left: 0;
+                      top: 7px;
+                      width: 2px;
+                      height: 8px;
+                      background: var(--terra);
+                      border-radius: 1px;
+                    "
+                  ></div>
+                  <div
+                    style="
+                      position: absolute;
+                      right: 0;
+                      top: 7px;
+                      width: 2px;
+                      height: 8px;
+                      background: var(--rose);
+                      border-radius: 1px;
+                    "
+                  ></div>
+                  <div
+                    style="
+                      position: absolute;
+                      left: 0%;
+                      top: 6px;
+                      transform: translateX(-50%);
+                      width: 10px;
+                      height: 10px;
+                      background: var(--terra);
+                      border: 2px solid var(--panel);
+                      border-radius: 50%;
+                      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+                    "
+                  ></div>
+                </div>
+                <div style="display: flex; gap: 4px; font-size: 11px">
+                  <div
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      padding: 4px;
+                      background: var(--bg-3);
+                      border-radius: 4px;
+                    "
+                  >
+                    2
+                  </div>
+                  <div
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      padding: 4px;
+                      background: var(--bg-3);
+                      border-radius: 4px;
+                    "
+                  >
+                    2
+                  </div>
+                  <div
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      padding: 4px;
+                      background: var(--bg-3);
+                      border-radius: 4px;
+                    "
+                  >
+                    2
+                  </div>
+                  <div
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      padding: 4px;
+                      background: var(--bg-3);
+                      border-radius: 4px;
+                    "
+                  >
+                    2
+                  </div>
+                  <div
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      padding: 4px;
+                      background: var(--bg-3);
+                      border-radius: 4px;
+                    "
+                  >
+                    2
+                  </div>
+                </div>
+                <div
+                  style="font-size: 9px; color: var(--terra); margin-top: 4px"
+                >
+                  Dot on the left = perfectly balanced
+                </div>
+              </div>
+
+              <!-- Medium case -->
+              <div style="margin-bottom: 16px">
+                <div
+                  style="font-size: 10px; font-weight: 600; margin-bottom: 4px"
+                >
+                  Slightly unbalanced: σ = 1.10
+                </div>
+                <div
+                  style="position: relative; height: 20px; margin-bottom: 6px"
+                >
+                  <div
+                    style="
+                      position: absolute;
+                      top: 9px;
+                      left: 0;
+                      right: 0;
+                      height: 4px;
+                      background: linear-gradient(
+                        to right,
+                        var(--terra),
+                        var(--amber),
+                        var(--rose)
+                      );
+                      border-radius: 2px;
+                      opacity: 0.3;
+                    "
+                  ></div>
+                  <div
+                    style="
+                      position: absolute;
+                      left: 0;
+                      top: 7px;
+                      width: 2px;
+                      height: 8px;
+                      background: var(--terra);
+                      border-radius: 1px;
+                    "
+                  ></div>
+                  <div
+                    style="
+                      position: absolute;
+                      right: 0;
+                      top: 7px;
+                      width: 2px;
+                      height: 8px;
+                      background: var(--rose);
+                      border-radius: 1px;
+                    "
+                  ></div>
+                  <div
+                    style="
+                      position: absolute;
+                      left: 25%;
+                      top: 6px;
+                      transform: translateX(-50%);
+                      width: 10px;
+                      height: 10px;
+                      background: var(--ink);
+                      border: 2px solid var(--panel);
+                      border-radius: 50%;
+                      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+                    "
+                  ></div>
+                </div>
+                <div style="display: flex; gap: 4px; font-size: 11px">
+                  <div
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      padding: 4px;
+                      background: var(--bg-3);
+                      border-radius: 4px;
+                    "
+                  >
+                    3
+                  </div>
+                  <div
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      padding: 4px;
+                      background: var(--bg-3);
+                      border-radius: 4px;
+                    "
+                  >
+                    2
+                  </div>
+                  <div
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      padding: 4px;
+                      background: var(--bg-3);
+                      border-radius: 4px;
+                    "
+                  >
+                    2
+                  </div>
+                  <div
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      padding: 4px;
+                      background: var(--bg-3);
+                      border-radius: 4px;
+                    "
+                  >
+                    2
+                  </div>
+                  <div
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      padding: 4px;
+                      background: var(--rose-soft);
+                      border-radius: 4px;
+                    "
+                  >
+                    1
+                  </div>
+                </div>
+                <div
+                  style="font-size: 9px; color: var(--ink-3); margin-top: 4px"
+                >
+                  Dot moved right = less balanced
+                </div>
+              </div>
+
+              <!-- Worst case -->
+              <div>
+                <div
+                  style="font-size: 10px; font-weight: 600; margin-bottom: 4px"
+                >
+                  Worst case: σ = 4.00
+                </div>
+                <div
+                  style="position: relative; height: 20px; margin-bottom: 6px"
+                >
+                  <div
+                    style="
+                      position: absolute;
+                      top: 9px;
+                      left: 0;
+                      right: 0;
+                      height: 4px;
+                      background: linear-gradient(
+                        to right,
+                        var(--terra),
+                        var(--amber),
+                        var(--rose)
+                      );
+                      border-radius: 2px;
+                      opacity: 0.3;
+                    "
+                  ></div>
+                  <div
+                    style="
+                      position: absolute;
+                      left: 0;
+                      top: 7px;
+                      width: 2px;
+                      height: 8px;
+                      background: var(--terra);
+                      border-radius: 1px;
+                    "
+                  ></div>
+                  <div
+                    style="
+                      position: absolute;
+                      right: 0;
+                      top: 7px;
+                      width: 2px;
+                      height: 8px;
+                      background: var(--rose);
+                      border-radius: 1px;
+                    "
+                  ></div>
+                  <div
+                    style="
+                      position: absolute;
+                      left: 100%;
+                      top: 6px;
+                      transform: translateX(-50%);
+                      width: 10px;
+                      height: 10px;
+                      background: var(--rose);
+                      border: 2px solid var(--panel);
+                      border-radius: 50%;
+                      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+                    "
+                  ></div>
+                </div>
+                <div style="display: flex; gap: 4px; font-size: 11px">
+                  <div
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      padding: 4px;
+                      background: var(--rose-soft);
+                      border-radius: 4px;
+                    "
+                  >
+                    10
+                  </div>
+                  <div
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      padding: 4px;
+                      background: var(--bg-3);
+                      border-radius: 4px;
+                    "
+                  >
+                    0
+                  </div>
+                  <div
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      padding: 4px;
+                      background: var(--bg-3);
+                      border-radius: 4px;
+                    "
+                  >
+                    0
+                  </div>
+                  <div
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      padding: 4px;
+                      background: var(--bg-3);
+                      border-radius: 4px;
+                    "
+                  >
+                    0
+                  </div>
+                  <div
+                    style="
+                      flex: 1;
+                      text-align: center;
+                      padding: 4px;
+                      background: var(--bg-3);
+                      border-radius: 4px;
+                    "
+                  >
+                    0
+                  </div>
+                </div>
+                <div
+                  style="font-size: 9px; color: var(--rose); margin-top: 4px"
+                >
+                  Dot on the right = all students in one class
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="info-section">
+            <h4>Theoretical Minimum (min)</h4>
+            <p>
+              The <strong>theoretical minimum</strong> is the best possible
+              balance for your roster. If students divide evenly, it's 0. If not
+              (e.g., 11 students across 5 classes), some classes must have more
+              than others, so the minimum is slightly higher.
+            </p>
+            <p>
+              <strong>Goal:</strong> Get your dot as close to the left (min) as
+              possible.
+            </p>
+          </div>
+
+          <div class="info-section">
+            <h4>Theoretical Maximum (max)</h4>
+            <p>
+              The <strong>theoretical maximum</strong> is the worst-case
+              scenario where all students of that type are in a single class.
+              This is the right edge of the slider.
+            </p>
+          </div>
+
+          <div class="info-section">
+            <h4>Using This While Dragging Students</h4>
+            <p>
+              As you drag students between classes, watch the sliders update in
+              real-time. Try to move dots toward the left (green) side to
+              improve balance!
+            </p>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button class="btn primary" onclick="closeBalanceExplanationModal()">
+            Got it!
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Grade Settings Modal -->
     <div id="gradeSettingsModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2><span id="gradeSettingsTitle">Grade Settings</span></h2>
-                <button class="btn-close" onclick="closeGradeSettings()">×</button>
-            </div>
-            <div class="modal-body" id="gradeSettingsBody">
-                <!-- Grade settings content -->
-            </div>
-            <div class="modal-footer">
-                <button class="btn ghost" onclick="closeGradeSettings()">Cancel</button>
-                <button class="btn primary" onclick="saveGradeSettings()">Save</button>
-            </div>
+      <div class="modal-content">
+        <div class="modal-header">
+          <h2><span id="gradeSettingsTitle">Grade Settings</span></h2>
+          <button class="btn-close" onclick="closeGradeSettings()">×</button>
         </div>
+        <div class="modal-body" id="gradeSettingsBody">
+          <!-- Grade settings content -->
+        </div>
+        <div class="modal-footer">
+          <button class="btn ghost" onclick="closeGradeSettings()">
+            Cancel
+          </button>
+          <button class="btn primary" onclick="saveGradeSettings()">
+            Save
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Transition Wizard -->
     <div class="transition-overlay" id="transitionWizard">
-        <div class="transition-container">
-            <div class="transition-header">
-                <h2>Create <em id="next-year-name">2026–27</em></h2>
-                <p class="lede">Review promoted students, import new Kindergarten class, and make adjustments before finalizing next year.</p>
-            </div>
-            <div class="transition-body" id="transitionGrades">
-                <!-- Grade columns will be rendered here -->
-            </div>
-            <div class="transition-footer">
-                <button class="btn ghost" onclick="closeTransitionWizard()">Cancel</button>
-                <div style="display: flex; gap: 12px; align-items: center;">
-                    <span style="font-size: 12px; color: var(--ink-3);">
-                        <span id="transition-total-students">0</span> students ready
-                    </span>
-                    <button class="btn terra" onclick="confirmTransition()">Create School Year →</button>
-                </div>
-            </div>
+      <div class="transition-container">
+        <div class="transition-header">
+          <h2>Create <em id="next-year-name">2026–27</em></h2>
+          <p class="lede">
+            Review promoted students, import new Kindergarten class, and make
+            adjustments before finalizing next year. New students can be added
+            to grades after the new school year is created.
+          </p>
+          <div class="transition-search-bar">
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 16 16"
+              fill="none"
+              style="
+                position: absolute;
+                left: 10px;
+                top: 50%;
+                transform: translateY(-50%);
+                opacity: 0.5;
+              "
+            >
+              <circle
+                cx="7"
+                cy="7"
+                r="5"
+                stroke="currentColor"
+                stroke-width="1.5"
+              />
+              <path
+                d="M11 11l3 3"
+                stroke="currentColor"
+                stroke-width="1.5"
+                stroke-linecap="round"
+              />
+            </svg>
+            <input
+              type="text"
+              placeholder="Search students..."
+              id="transitionSearchInput"
+              oninput="searchTransitionStudents(this.value)"
+            />
+            <button
+              class="transition-search-clear"
+              id="transitionSearchClear"
+              onclick="clearTransitionSearch()"
+              style="display: none"
+              title="Clear search"
+            >
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none">
+                <path
+                  d="M4 4l8 8M12 4l-8 8"
+                  stroke="currentColor"
+                  stroke-width="1.5"
+                  stroke-linecap="round"
+                />
+              </svg>
+            </button>
+          </div>
         </div>
+        <div class="transition-body" id="transitionGrades">
+          <!-- Grade columns will be rendered here -->
+        </div>
+        <div class="transition-footer">
+          <button class="btn ghost" onclick="closeTransitionWizard()">
+            Cancel
+          </button>
+          <div style="display: flex; gap: 12px; align-items: center">
+            <span style="font-size: 12px; color: var(--ink-3)">
+              <span id="transition-total-students">0</span> students ready
+            </span>
+            <button class="btn terra" onclick="confirmTransition()">
+              Create School Year →
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Onboarding Overlay -->
     <div class="onboarding-overlay" id="onboardingOverlay">
-        <div class="onboarding-container">
-            <div class="onboarding-header">
-                <h1>Welcome to <span class="brand-class">Class</span>ify</h1>
-                <p class="lede">Let's get started by importing your current student roster. Upload a CSV with all students and their grades.</p>
-            </div>
-
-            <div class="onboarding-body">
-                <div class="onboarding-section">
-                    <h3>School Year</h3>
-                    <p>Confirm or edit your current school year.</p>
-                    <input type="text" id="onboarding-year" class="year-input" placeholder="2025–26">
-                </div>
-
-                <div class="onboarding-section">
-                    <h3>Upload Student Roster</h3>
-                    <p>Drop your CSV file here, or click to browse.</p>
-                    <div class="drop-zone" id="dropZone">
-                        <div class="drop-zone-icon"></div>
-                        <div class="drop-zone-text">Drop CSV file or click to upload</div>
-                        <div class="drop-zone-hint">Must include "name" and "grade" columns</div>
-                    </div>
-                    <input type="file" id="rosterFile" accept=".csv" style="display:none">
-
-                    <div class="csv-format">
-                        <h4>CSV Format Example:</h4>
-                        <code>name,grade,gender,math,reading,behavior,independence,iep,504,esl,gate,friends,incompatible
-John Smith,1st,M,h,m,cooperative,high,n,n,n,n,"Jane Doe",
-Jane Doe,Kindergarten,F,m,h,neutral,neutral,n,y,n,n,John Smith,
-...</code>
-                    </div>
-
-                    <div class="error-message" id="errorMessage"></div>
-                </div>
-
-                <div class="preview-panel" id="previewPanel">
-                    <div class="preview-header">
-                        <h4>Preview</h4>
-                        <div class="preview-stats">
-                            <span><span id="preview-total">0</span> students</span>
-                            <span><span id="preview-grades-count">0</span> grades</span>
-                        </div>
-                    </div>
-                    <div class="preview-grades" id="previewGrades">
-                        <!-- Grade summary will appear here -->
-                    </div>
-                </div>
-            </div>
-
-            <div class="onboarding-footer">
-                <button class="btn primary" id="confirmButton" onclick="confirmImport()" disabled>
-                    Confirm & Import →
-                </button>
-            </div>
+      <div class="onboarding-container">
+        <div class="onboarding-header">
+          <h1>Welcome to <span class="brand-class">Class</span>ify</h1>
+          <p class="lede">
+            Let's get started by importing your current student roster. Upload a
+            CSV with all students and their grades.
+          </p>
         </div>
+
+        <div class="onboarding-body">
+          <div class="onboarding-section">
+            <h3>School Year</h3>
+            <p>Confirm or edit your current school year.</p>
+            <input
+              type="text"
+              id="onboarding-year"
+              class="year-input"
+              placeholder="2025–26"
+            />
+          </div>
+
+          <div class="onboarding-section">
+            <h3>Upload Student Roster</h3>
+            <p>Drop your CSV file here, or click to browse.</p>
+            <div class="drop-zone" id="dropZone">
+              <div class="drop-zone-icon"></div>
+              <div class="drop-zone-text">Drop CSV file or click to upload</div>
+              <div class="drop-zone-hint">
+                Must include "name" and "grade" columns
+              </div>
+            </div>
+            <input
+              type="file"
+              id="rosterFile"
+              accept=".csv"
+              style="display: none"
+            />
+
+            <div class="csv-format">
+              <h4>CSV Format Example:</h4>
+              <code
+                >name,grade,gender,math,reading,behavior,independence,iep,504,esl,gate,friends,incompatible
+                John Smith,1st,M,h,m,cooperative,high,n,n,n,n,"Jane Doe", Jane
+                Doe,Kindergarten,F,m,h,neutral,neutral,n,y,n,n,John Smith,
+                ...</code
+              >
+            </div>
+
+            <div class="error-message" id="errorMessage"></div>
+          </div>
+
+          <div class="preview-panel" id="previewPanel">
+            <div class="preview-header">
+              <h4>Preview</h4>
+              <div class="preview-stats">
+                <span><span id="preview-total">0</span> students</span>
+                <span><span id="preview-grades-count">0</span> grades</span>
+              </div>
+            </div>
+            <div class="preview-grades" id="previewGrades">
+              <!-- Grade summary will appear here -->
+            </div>
+          </div>
+        </div>
+
+        <div class="onboarding-footer">
+          <button
+            class="btn primary"
+            id="confirmButton"
+            onclick="confirmImport()"
+            disabled
+          >
+            Confirm & Import →
+          </button>
+        </div>
+      </div>
     </div>
 
-    <script src="/static/js/homeroom-app.js?v=42"></script>
-    <script src="/static/js/transition.js"></script>
+    <script src="/static/js/homeroom-app.js?v=58"></script>
+    <script src="/static/js/transition.js?v=44"></script>
     <script src="/static/js/onboarding.js"></script>
-    <script>lucide.createIcons();</script>
-</body>
+    <script>
+      lucide.createIcons();
+    </script>
+  </body>
 </html>
