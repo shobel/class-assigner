@@ -118,37 +118,38 @@ async function clearSchoolYear(year) {
 // ── Activation ───────────────────────────────────────────────────────────────
 
 // Replace with your Supabase project URL and anon key
-const SUPABASE_URL = 'https://vvswzymqizfninwuoumw.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2c3d6eW1xaXpmbmlud3VvdW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzODg5MTcsImV4cCI6MjA5Mzk2NDkxN30.JuXEoKfKw5VNQHSMweVryNgj0qo19DscnZhK6bLy-Ps';
+const SUPABASE_URL = "https://vvswzymqizfninwuoumw.supabase.co";
+const SUPABASE_ANON_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2c3d6eW1xaXpmbmlud3VvdW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzODg5MTcsImV4cCI6MjA5Mzk2NDkxN30.JuXEoKfKw5VNQHSMweVryNgj0qo19DscnZhK6bLy-Ps";
 
 async function checkActivation() {
-  const res = await fetch('/api/activation-status');
+  const res = await fetch("/api/activation-status");
   const data = await res.json();
   return data.activated;
 }
 
 async function submitActivationCode() {
-  const input = document.getElementById('activation-input');
-  const errorEl = document.getElementById('activation-error');
-  const btn = document.getElementById('activation-btn');
+  const input = document.getElementById("activation-input");
+  const errorEl = document.getElementById("activation-error");
+  const btn = document.getElementById("activation-btn");
   const code = input.value.trim().toUpperCase();
 
   if (!code) {
-    errorEl.textContent = 'Please enter your activation code.';
-    errorEl.style.display = 'block';
+    errorEl.textContent = "Please enter your activation code.";
+    errorEl.style.display = "block";
     return;
   }
 
-  btn.textContent = 'Checking…';
+  btn.textContent = "Checking…";
   btn.disabled = true;
-  errorEl.style.display = 'none';
+  errorEl.style.display = "none";
 
   try {
     const res = await fetch(`${SUPABASE_URL}/functions/v1/validate-code`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify({ code }),
     });
@@ -157,29 +158,30 @@ async function submitActivationCode() {
 
     if (data.valid) {
       // Save activation locally
-      await fetch('/api/activate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      await fetch("/api/activate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code }),
       });
       // Offer restore from backup before starting
       showRestoreOption();
     } else {
-      errorEl.textContent = data.error || 'Invalid or already used code.';
-      errorEl.style.display = 'block';
-      btn.textContent = 'Activate';
+      errorEl.textContent = data.error || "Invalid or already used code.";
+      errorEl.style.display = "block";
+      btn.textContent = "Activate";
       btn.disabled = false;
     }
   } catch (err) {
-    errorEl.textContent = 'Could not reach activation server. Check your internet connection.';
-    errorEl.style.display = 'block';
-    btn.textContent = 'Activate';
+    errorEl.textContent =
+      "Could not reach activation server. Check your internet connection.";
+    errorEl.style.display = "block";
+    btn.textContent = "Activate";
     btn.disabled = false;
   }
 }
 
 function showRestoreOption() {
-  document.getElementById('activation-box').innerHTML = `
+  document.getElementById("activation-box").innerHTML = `
     <div style="font-family:'Instrument Serif',serif;font-size:32px;font-style:italic;margin-bottom:6px">
       <span style="color:var(--terra)">Class</span>ify
     </div>
@@ -201,31 +203,35 @@ function showRestoreOption() {
 async function handleActivationImport(input) {
   const file = input.files[0];
   if (!file) return;
-  const statusEl = document.getElementById('restore-status');
-  statusEl.textContent = 'Restoring…';
-  statusEl.style.color = 'var(--ink-3)';
-  statusEl.style.display = 'block';
+  const statusEl = document.getElementById("restore-status");
+  statusEl.textContent = "Restoring…";
+  statusEl.style.color = "var(--ink-3)";
+  statusEl.style.display = "block";
 
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append("file", file);
 
   try {
-    const res = await fetch('/api/import-data', { method: 'POST', body: formData });
+    const res = await fetch("/api/import-data", {
+      method: "POST",
+      body: formData,
+    });
     const data = await res.json();
     if (res.ok) {
-      statusEl.textContent = 'Restored! Starting app…';
-      statusEl.style.color = 'var(--sage-ink)';
+      statusEl.textContent = "Restored! Starting app…";
+      statusEl.style.color = "var(--sage-ink)";
       setTimeout(() => {
-        document.getElementById('activation-overlay').classList.add('hidden');
+        document.getElementById("activation-overlay").classList.add("hidden");
         startApp();
       }, 1000);
     } else {
-      statusEl.textContent = data.error || 'Restore failed. Try again or start fresh.';
-      statusEl.style.color = 'var(--rose)';
+      statusEl.textContent =
+        data.error || "Restore failed. Try again or start fresh.";
+      statusEl.style.color = "var(--rose)";
     }
   } catch (err) {
-    statusEl.textContent = 'Restore failed. Check the file and try again.';
-    statusEl.style.color = 'var(--rose)';
+    statusEl.textContent = "Restore failed. Check the file and try again.";
+    statusEl.style.color = "var(--rose)";
   }
 }
 
@@ -244,10 +250,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   const activated = await checkActivation();
   if (!activated) {
     // Show activation overlay, app stays hidden until code is entered
-    document.getElementById('activation-overlay').classList.remove('hidden');
-    document.getElementById('activation-input').focus();
+    document.getElementById("activation-overlay").classList.remove("hidden");
+    document.getElementById("activation-input").focus();
   } else {
-    document.getElementById('activation-overlay').classList.add('hidden');
+    document.getElementById("activation-overlay").classList.add("hidden");
     await startApp();
   }
 });
@@ -330,39 +336,53 @@ let currentGradeSettings = null;
 
 // Teacher bar (shown between grade title and tabs on all grade screens)
 function renderTeacherBar(teachers) {
-  const list = (teachers || []).filter(t => t && t.trim());
+  const list = (teachers || []).filter((t) => t && t.trim());
   return `
     <div id="teacherBar" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
-      ${list.map(t => {
-        const initials = t.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
-        return `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px 4px 6px;background:var(--bg-2);border:1px solid var(--line);border-radius:20px;font-size:12px;font-weight:500;">
+      ${list
+        .map((t) => {
+          const initials = t
+            .split(" ")
+            .map((n) => n[0])
+            .join("")
+            .slice(0, 2)
+            .toUpperCase();
+          return `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px 4px 6px;background:var(--bg-2);border:1px solid var(--line);border-radius:20px;font-size:12px;font-weight:500;">
           <span class="avatar t" style="width:20px;height:20px;font-size:8px;flex-shrink:0;">${initials}</span>
           ${t}
           <button onclick="removeGradeTeacher('${t.replace(/'/g, "\\'")}')" style="background:none;border:none;cursor:pointer;color:var(--ink-4);padding:0;font-size:13px;line-height:1;margin-left:2px;" title="Remove">×</button>
         </span>`;
-      }).join('')}
+        })
+        .join("")}
       <button class="btn ghost sm" id="addTeacherBtn" onclick="startAddGradeTeacher(this)">+ Add teacher</button>
     </div>
   `;
 }
 
 function startAddGradeTeacher(btn) {
-  const input = document.createElement('input');
-  input.type = 'text';
-  input.placeholder = 'Teacher name';
-  input.style.cssText = 'height:28px;padding:0 10px;border:1px solid var(--terra);border-radius:20px;font:inherit;font-size:12px;outline:none;background:var(--panel);color:var(--ink);width:160px;';
+  const input = document.createElement("input");
+  input.type = "text";
+  input.placeholder = "Teacher name";
+  input.style.cssText =
+    "height:28px;padding:0 10px;border:1px solid var(--terra);border-radius:20px;font:inherit;font-size:12px;outline:none;background:var(--panel);color:var(--ink);width:160px;";
   btn.replaceWith(input);
   input.focus();
 
   const finish = async () => {
     const name = input.value.trim();
     if (name) await addGradeTeacher(name);
-    else showScreen(document.querySelector('.grade-tab.on') ? 'students' : 'results');
+    else
+      showScreen(
+        document.querySelector(".grade-tab.on") ? "students" : "results",
+      );
   };
-  input.addEventListener('blur', finish);
-  input.addEventListener('keydown', e => {
-    if (e.key === 'Enter') input.blur();
-    if (e.key === 'Escape') { input.value = ''; input.blur(); }
+  input.addEventListener("blur", finish);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") input.blur();
+    if (e.key === "Escape") {
+      input.value = "";
+      input.blur();
+    }
   });
 }
 
@@ -371,11 +391,11 @@ async function addGradeTeacher(name) {
   const updated = [...(window.currentAvailableTeachers || []), name];
   window.currentAvailableTeachers = updated;
   await fetch(`/api/grades/${currentGrade.id}/settings`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ available_teachers: updated }),
   });
-  const bar = document.getElementById('teacherBar');
+  const bar = document.getElementById("teacherBar");
   if (bar) bar.outerHTML = renderTeacherBar(updated);
 }
 
@@ -383,17 +403,19 @@ async function removeGradeTeacher(name) {
   if (!currentGrade) return;
   const assignedToClass = (window.currentTeachers || []).includes(name);
   if (assignedToClass) {
-    showNotice(`${name} is assigned to a class — unassign them first`, 'error');
+    showNotice(`${name} is assigned to a class — unassign them first`, "error");
     return;
   }
-  const updated = (window.currentAvailableTeachers || []).filter(t => t !== name);
+  const updated = (window.currentAvailableTeachers || []).filter(
+    (t) => t !== name,
+  );
   window.currentAvailableTeachers = updated;
   await fetch(`/api/grades/${currentGrade.id}/settings`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ available_teachers: updated }),
   });
-  const bar = document.getElementById('teacherBar');
+  const bar = document.getElementById("teacherBar");
   if (bar) bar.outerHTML = renderTeacherBar(updated);
 }
 
@@ -497,7 +519,6 @@ function checkClassSizeFeasibility() {
 }
 window.checkClassSizeFeasibility = checkClassSizeFeasibility;
 
-
 function closeGradeSettings() {
   document.getElementById("gradeSettingsModal").classList.remove("open");
   currentGradeSettings = null;
@@ -572,17 +593,23 @@ async function saveGradeSettings() {
 // Show screen
 async function showScreen(screen) {
   // Guard: navigating away from the grade screen with unsaved changes
-  const onGradeScreen = currentScreen === "results" || currentScreen === "students";
+  const onGradeScreen =
+    currentScreen === "results" || currentScreen === "students";
   const leavingGradeScreen = screen !== "results" && screen !== "students";
   if (onGradeScreen && leavingGradeScreen && window.hasUnsavedChanges) {
-    const action = await showSavePrompt("Save your manual changes before leaving?");
+    const action = await showSavePrompt(
+      "Save your manual changes before leaving?",
+    );
     if (action === "cancel") return;
     if (action === "save") {
       try {
         const res = await fetch(`/api/grades/${currentGrade.id}/assignments`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ assignments: window.currentAssignments, update_baseline: true }),
+          body: JSON.stringify({
+            assignments: window.currentAssignments,
+            update_baseline: true,
+          }),
         });
         if (res.ok) {
           window.hasUnsavedChanges = false;
@@ -652,7 +679,10 @@ async function showScreen(screen) {
   }
   renderIcons();
   // Re-apply any active search/filter after re-renders
-  if (window.assignmentSearch || (window.assignmentFilterFlags && window.assignmentFilterFlags.size > 0)) {
+  if (
+    window.assignmentSearch ||
+    (window.assignmentFilterFlags && window.assignmentFilterFlags.size > 0)
+  ) {
     requestAnimationFrame(applyAssignmentFilters);
   }
 }
@@ -737,7 +767,17 @@ function renderWelcomeScreen() {
 
 // Config Screen
 function renderSchoolConfigScreen() {
-  const grades = ['Kindergarten','1st Grade','2nd Grade','3rd Grade','4th Grade','5th Grade','6th Grade','7th Grade','8th Grade'];
+  const grades = [
+    "Kindergarten",
+    "1st Grade",
+    "2nd Grade",
+    "3rd Grade",
+    "4th Grade",
+    "5th Grade",
+    "6th Grade",
+    "7th Grade",
+    "8th Grade",
+  ];
   return `
     <div class="canvas">
       <div class="page-hd">
@@ -753,7 +793,7 @@ function renderSchoolConfigScreen() {
           </div>
           <div class="panel-b">
             <div style="display:flex;align-items:center;gap:10px">
-              <input type="text" id="schoolNameInput" value="${config.school_name || ''}" placeholder="e.g. Lincoln Elementary"
+              <input type="text" id="schoolNameInput" value="${config.school_name || ""}" placeholder="e.g. Lincoln Elementary"
                 style="flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:13px;background:var(--panel)">
               <button class="btn sm ghost" onclick="saveSchoolName()">Save</button>
             </div>
@@ -769,7 +809,7 @@ function renderSchoolConfigScreen() {
               <span class="k" style="font-size:12px">Highest grade in school</span>
               <select onchange="updateMaxGrade(this.value)"
                 style="padding:4px 8px;border:1px solid var(--line-soft);border-radius:6px;font-size:12px;background:var(--bg-2);color:var(--ink);cursor:pointer">
-                ${grades.map(g => `<option value="${g}" ${(config.max_grade || '8th Grade') === g ? 'selected' : ''}>${g}</option>`).join('')}
+                ${grades.map((g) => `<option value="${g}" ${(config.max_grade || "8th Grade") === g ? "selected" : ""}>${g}</option>`).join("")}
               </select>
             </div>
             <p style="font-size:11px;color:var(--ink-3);line-height:1.5">
@@ -879,7 +919,8 @@ function renderWeightSliders() {
     math: "Balance high / medium / low math levels.",
     reading: "Balance reading proficiency tiers.",
     friends: "Keep friends together when possible (soft constraint).",
-    teacher_uniqueness: "Students are never assigned to a teacher they've had before.",
+    teacher_uniqueness:
+      "Students are never assigned to a teacher they've had before.",
   };
 
   const renderRow = (prop, isCustom) => {
@@ -888,8 +929,10 @@ function renderWeightSliders() {
     const isHard = isCustom && prop.constraint === "hard";
     const isHardToggle = prop.type === "hard_toggle";
     const typeDesc = isCustom
-      ? (prop.type === "boolean" ? "Yes / No" : (prop.values || []).join(", "))
-      : (descriptions[prop.name] || "");
+      ? prop.type === "boolean"
+        ? "Yes / No"
+        : (prop.values || []).join(", ")
+      : descriptions[prop.name] || "";
 
     return `
     <div style="padding: 12px 0; border-bottom: 1px solid var(--line-soft); ${!enabled ? "opacity: 0.5;" : ""}">
@@ -905,20 +948,26 @@ function renderWeightSliders() {
             ${isCustom ? `<span onclick="toggleCustomConstraint('${prop.name}')" style="cursor:pointer; padding:1px 5px; border-radius:3px; font-size:9px; font-weight:700; text-transform:uppercase; background:${isHard ? "var(--rose)" : "var(--line-soft)"}; color:${isHard ? "#fff" : "var(--ink-3)"};">${isHard ? "Hard" : "Soft"}</span>` : ""}
           </div>
         </div>
-        ${isHardToggle ? `
+        ${
+          isHardToggle
+            ? `
           <div style="font-size:11px; color:var(--ink-3); font-style:italic;">
             Hard constraint — students never repeat a teacher
           </div>
           <div></div>
-        ` : isHard ? `
+        `
+            : isHard
+              ? `
           <div style="font-size:11px; color:var(--ink-3); font-style:italic;">Always enforced at maximum priority</div>
           <div></div>
-        ` : `
+        `
+              : `
           <input type="range" min="1" max="5" step="1" class="slider" value="${weight}" onchange="updateWeight('${prop.name}', this.value)" ${!enabled ? "disabled" : ""}>
           <div style="font-family: var(--t-mono); font-size: 10px; text-align: right; text-transform: uppercase; color: var(--terra);">
             ${["", "Mild", "Medium", "High", "Critical"][weight - 1] || "Mild"}
           </div>
-        `}
+        `
+        }
         ${isCustom ? `<button onclick="deleteCustomAttribute('${prop.name.replace(/'/g, "\\'")}')" title="Remove" style="background:none;border:none;cursor:pointer;color:var(--ink-3);font-size:16px;padding:0;line-height:1;align-self:center;">×</button>` : ""}
       </div>
     </div>`;
@@ -944,8 +993,11 @@ function renderWeightSliders() {
 
 function openAddCustomAttributeModal() {
   const overlay = document.createElement("div");
-  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:1000;display:flex;align-items:center;justify-content:center";
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.style.cssText =
+    "position:fixed;inset:0;background:rgba(0,0,0,0.35);z-index:1000;display:flex;align-items:center;justify-content:center";
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
 
   overlay.innerHTML = `
     <div style="background:var(--panel);border-radius:12px;width:440px;max-height:90vh;overflow-y:auto;box-shadow:0 8px 32px rgba(0,0,0,0.18)">
@@ -1004,13 +1056,17 @@ function openAddCustomAttributeModal() {
   overlay.querySelectorAll(".seg[data-field]").forEach((btn) => {
     btn.addEventListener("click", function () {
       const field = this.dataset.field;
-      overlay.querySelectorAll(`.seg[data-field="${field}"]`).forEach((b) => b.classList.remove("active"));
+      overlay
+        .querySelectorAll(`.seg[data-field="${field}"]`)
+        .forEach((b) => b.classList.remove("active"));
       this.classList.add("active");
       if (field === "custom-type") {
-        document.getElementById("custom-values-row").style.display = this.dataset.value === "categorical" ? "block" : "none";
+        document.getElementById("custom-values-row").style.display =
+          this.dataset.value === "categorical" ? "block" : "none";
       }
       if (field === "custom-constraint") {
-        document.getElementById("custom-weight-row").style.display = this.dataset.value === "soft" ? "block" : "none";
+        document.getElementById("custom-weight-row").style.display =
+          this.dataset.value === "soft" ? "block" : "none";
       }
     });
   });
@@ -1035,22 +1091,43 @@ async function submitAddCustomAttribute() {
     return;
   }
 
-  const name = displayName.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "");
+  const name = displayName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
   if (config.properties.find((p) => p.name === name)) {
     errorEl.textContent = `An attribute named "${name}" already exists.`;
     errorEl.style.display = "block";
     return;
   }
 
-  const type = overlay.querySelector('.seg.active[data-field="custom-type"]')?.dataset.value || "boolean";
-  const constraint = overlay.querySelector('.seg.active[data-field="custom-constraint"]')?.dataset.value || "soft";
-  const weight = parseInt(document.getElementById("custom-attr-weight").value) * 20;
+  const type =
+    overlay.querySelector('.seg.active[data-field="custom-type"]')?.dataset
+      .value || "boolean";
+  const constraint =
+    overlay.querySelector('.seg.active[data-field="custom-constraint"]')
+      ?.dataset.value || "soft";
+  const weight =
+    parseInt(document.getElementById("custom-attr-weight").value) * 20;
 
-  const newProp = { name, display_name: displayName, type, constraint, weight, enabled: true, custom: true };
+  const newProp = {
+    name,
+    display_name: displayName,
+    type,
+    constraint,
+    weight,
+    enabled: true,
+    custom: true,
+  };
 
   if (type === "categorical") {
-    const valuesStr = document.getElementById("custom-attr-values").value.trim();
-    const values = valuesStr.split(",").map((v) => v.trim()).filter(Boolean);
+    const valuesStr = document
+      .getElementById("custom-attr-values")
+      .value.trim();
+    const values = valuesStr
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
     if (values.length === 0) {
       errorEl.textContent = "Please enter at least one value.";
       errorEl.style.display = "block";
@@ -1060,7 +1137,11 @@ async function submitAddCustomAttribute() {
   }
 
   config.properties.push(newProp);
-  await fetch("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) });
+  await fetch("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
   overlay.remove();
   showScreen("config");
   showNotice(`"${displayName}" attribute added.`);
@@ -1073,7 +1154,11 @@ async function deleteCustomAttribute(name) {
   const ok = await showConfirm(`Remove "${prop.display_name}" attribute?`);
   if (!ok) return;
   config.properties = config.properties.filter((p) => p.name !== name);
-  await fetch("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) });
+  await fetch("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
   showScreen("config");
   showNotice(`"${prop.display_name}" removed.`);
 }
@@ -1083,7 +1168,11 @@ async function toggleCustomConstraint(name) {
   const prop = config.properties.find((p) => p.name === name);
   if (!prop) return;
   prop.constraint = prop.constraint === "hard" ? "soft" : "hard";
-  await fetch("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(config) });
+  await fetch("/api/config", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
   showScreen("config");
 }
 window.toggleCustomConstraint = toggleCustomConstraint;
@@ -1125,20 +1214,20 @@ async function updateMaxGrade(value) {
 async function resetWeightsToDefaults() {
   // Default weights based on slider values (1-5 scale = 20-100 weight)
   const defaults = {
-    'gender': 40,        // 2 = Medium
-    'behavior': 100,     // 5 = Critical
-    'independence': 60,  // 3 = Medium
-    'iep': 100,          // 5 = Critical
-    '504': 100,          // 5 = Critical
-    'esl': 80,           // 4 = High
-    'gate': 60,          // 3 = Medium
-    'math': 60,          // 3 = Medium
-    'reading': 60,       // 3 = Medium
-    'friends': 20        // 1 = Mild
+    gender: 40, // 2 = Medium
+    behavior: 100, // 5 = Critical
+    independence: 60, // 3 = Medium
+    iep: 100, // 5 = Critical
+    504: 100, // 5 = Critical
+    esl: 80, // 4 = High
+    gate: 60, // 3 = Medium
+    math: 60, // 3 = Medium
+    reading: 60, // 3 = Medium
+    friends: 20, // 1 = Mild
   };
 
   // Update config properties
-  config.properties.forEach(prop => {
+  config.properties.forEach((prop) => {
     if (defaults[prop.name] !== undefined) {
       prop.weight = defaults[prop.name];
     }
@@ -1146,7 +1235,7 @@ async function resetWeightsToDefaults() {
 
   // Update friend_weight
   if (config.friend_weight !== undefined) {
-    config.friend_weight = defaults['friends'];
+    config.friend_weight = defaults["friends"];
   }
 
   // Save to server
@@ -1162,7 +1251,7 @@ async function resetWeightsToDefaults() {
 }
 
 async function saveSchoolName() {
-  const name = document.getElementById('schoolNameInput')?.value.trim();
+  const name = document.getElementById("schoolNameInput")?.value.trim();
   if (!name) return;
   config.school_name = name;
   await fetch("/api/config", {
@@ -1171,8 +1260,8 @@ async function saveSchoolName() {
     body: JSON.stringify(config),
   });
   // Update sidebar brand
-  document.getElementById('brand-school-name').textContent = name;
-  showNotice('School name saved.');
+  document.getElementById("brand-school-name").textContent = name;
+  showNotice("School name saved.");
 }
 window.saveSchoolName = saveSchoolName;
 
@@ -1224,9 +1313,12 @@ async function renderStudentsScreen() {
 
   const hasAssignments = assignments.length > 0;
 
-  console.log('DEBUG renderStudentsScreen - hasAssignments:', hasAssignments);
-  console.log('DEBUG renderStudentsScreen - assignData:', assignData);
-  console.log('DEBUG renderStudentsScreen - solver_status:', assignData?.solver_status);
+  console.log("DEBUG renderStudentsScreen - hasAssignments:", hasAssignments);
+  console.log("DEBUG renderStudentsScreen - assignData:", assignData);
+  console.log(
+    "DEBUG renderStudentsScreen - solver_status:",
+    assignData?.solver_status,
+  );
 
   // Set globals (don't overwrite in-memory assignment state when editing)
   window.currentStudents = students;
@@ -1278,16 +1370,24 @@ async function renderStudentsScreen() {
   // Stats
   const girls = students.filter((s) => s.gender === "g").length;
   const boys = students.filter((s) => s.gender === "b").length;
-  const iepCount = students.filter((s) => s.iep === true || s.iep === "true").length;
-  const plan504Count = students.filter((s) => s["504"] === true || s["504"] === "true").length;
-  const eslCount = students.filter((s) => s.esl === true || s.esl === "true").length;
-  const gateCount = students.filter((s) => s.gate === true || s.gate === "true").length;
+  const iepCount = students.filter(
+    (s) => s.iep === true || s.iep === "true",
+  ).length;
+  const plan504Count = students.filter(
+    (s) => s["504"] === true || s["504"] === "true",
+  ).length;
+  const eslCount = students.filter(
+    (s) => s.esl === true || s.esl === "true",
+  ).length;
+  const gateCount = students.filter(
+    (s) => s.gate === true || s.gate === "true",
+  ).length;
 
   const numClasses = data.num_classes;
 
   // Boolean filter flags from config
   const boolFlags = (config.properties || []).filter(
-    (p) => p.enabled && p.type === "boolean"
+    (p) => p.enabled && p.type === "boolean",
   );
 
   return `
@@ -1308,7 +1408,9 @@ async function renderStudentsScreen() {
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
         <span style="font-size:12px;color:var(--ink-3);">${students.length} students</span>
         ${hasAssignments ? `<span style="color:var(--line-soft);">·</span><span style="font-size:12px;color:var(--ink-3);">${numClasses} classes</span>` : ""}
-        ${hasAssignments && assignData?.solver_status === "OPTIMAL" ? `
+        ${
+          hasAssignments && assignData?.solver_status === "OPTIMAL"
+            ? `
           <span style="color:var(--line-soft);">·</span>
           <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--terra);font-weight:600;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1317,32 +1419,42 @@ async function renderStudentsScreen() {
             </svg>
             Optimal assignment
           </span>
-        ` : ''}
+        `
+            : ""
+        }
         <div style="flex:1;min-width:8px;"></div>
         <button class="btn ghost" onclick="showImportModal()"><i data-lucide="upload" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Re‑import</button>
-        ${hasAssignments
-          ? `<button class="btn ghost" onclick="exportAssignmentCSV()"><i data-lucide="download" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Export</button>`
-          : `<button class="btn ghost" onclick="exportCSV()"><i data-lucide="download" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Export</button>`
+        ${
+          hasAssignments
+            ? `<button class="btn ghost" onclick="exportAssignmentCSV()"><i data-lucide="download" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Export</button>`
+            : `<button class="btn ghost" onclick="exportCSV()"><i data-lucide="download" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Export</button>`
         }
         <button class="btn terra" onclick="runAssignment()"><i data-lucide="play" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>${hasAssignments ? "Re-assign" : "Assign"}</button>
       </div>
 
       <!-- Content area -->
-      ${hasAssignments ? `
+      ${
+        hasAssignments
+          ? `
         <!-- Search + filter bar -->
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:14px;flex-wrap:wrap;">
           <input id="assignmentSearch" type="text" placeholder="Search students…"
             oninput="filterAssignmentStudents(this.value)"
             value="${(window.assignmentSearch || "").replace(/"/g, "&quot;")}"
             style="height:30px;padding:0 10px;border:1px solid var(--line);border-radius:var(--rad);background:var(--panel);color:var(--ink);font:inherit;font-size:12px;width:180px;flex-shrink:0;">
-          ${boolFlags.map((p) => {
-            const label = p.display_name === "504 Plan" ? "504" : p.display_name;
-            const active = (window.assignmentFilterFlags || new Set()).has(p.name);
-            return `<button data-filter-flag="${p.name}" onclick="toggleAssignmentFilter('${p.name}')"
+          ${boolFlags
+            .map((p) => {
+              const label =
+                p.display_name === "504 Plan" ? "504" : p.display_name;
+              const active = (window.assignmentFilterFlags || new Set()).has(
+                p.name,
+              );
+              return `<button data-filter-flag="${p.name}" onclick="toggleAssignmentFilter('${p.name}')"
               style="height:30px;padding:0 10px;font-size:11px;border:1px solid var(--line);border-radius:var(--rad);cursor:pointer;transition:all 0.1s;background:${active ? "var(--ink)" : "transparent"};color:${active ? "#fff" : "var(--ink-3)"};">${label}</button>`;
-          }).join("")}
+            })
+            .join("")}
           <button id="clearFiltersBtn" onclick="clearAssignmentFilters()"
-            style="display:${(window.assignmentSearch || (window.assignmentFilterFlags && window.assignmentFilterFlags.size > 0)) ? "" : "none"};height:30px;padding:0 10px;font-size:11px;border:1px solid var(--line);border-radius:var(--rad);cursor:pointer;background:transparent;color:var(--rose);">× Clear</button>
+            style="display:${window.assignmentSearch || (window.assignmentFilterFlags && window.assignmentFilterFlags.size > 0) ? "" : "none"};height:30px;padding:0 10px;font-size:11px;border:1px solid var(--line);border-radius:var(--rad);cursor:pointer;background:transparent;color:var(--rose);">× Clear</button>
           <div style="flex:1;"></div>
           <button id="cleanViewBtn" onclick="toggleCleanView()"
             style="height:30px;padding:0 12px;font-size:11px;border:1px solid var(--line);border-radius:var(--rad);cursor:pointer;background:${window.cleanView ? "var(--ink)" : "transparent"};color:${window.cleanView ? "#fff" : "var(--ink-3)"};">Clean view</button>
@@ -1361,7 +1473,8 @@ async function renderStudentsScreen() {
         </div>
 
         ${renderAssignmentResults(assignments, numClasses, assignData)}
-      ` : `
+      `
+          : `
         <!-- Pre-assignment: flat roster for data entry -->
         <div class="panel" style="margin-bottom: 16px;">
           <div class="panel-b stats-strip">
@@ -1384,7 +1497,8 @@ async function renderStudentsScreen() {
         <div id="studentTabContent">
           ${renderStudentTabContent(students)}
         </div>
-      `}
+      `
+      }
     </div>
   `;
 }
@@ -1409,13 +1523,19 @@ function switchStudentTab(tab) {
 // Roster tab (original student list)
 function renderRosterTab(students) {
   // Split properties: skip gender and hard_toggle; separate booleans (flags) from categoricals
-  const allProps = config.properties?.filter(
-    (p) => p.enabled && p.type !== "relationship" && p.type !== "hard_toggle" && p.name !== "gender"
-  ) || [];
+  const allProps =
+    config.properties?.filter(
+      (p) =>
+        p.enabled &&
+        p.type !== "relationship" &&
+        p.type !== "hard_toggle" &&
+        p.name !== "gender",
+    ) || [];
   const flagProps = allProps.filter((p) => p.type === "boolean");
-  const catProps  = allProps.filter((p) => p.type !== "boolean");
+  const catProps = allProps.filter((p) => p.type !== "boolean");
 
-  const hasAssignments = window.currentAssignments && window.currentAssignments.length > 0;
+  const hasAssignments =
+    window.currentAssignments && window.currentAssignments.length > 0;
   const hasFlags = flagProps.length > 0;
 
   // Grid: avatar | name | categorical cols | [flags] | [assigned] | arrow
@@ -1429,7 +1549,9 @@ function renderRosterTab(students) {
   ].join(" ");
 
   // Auto-sort by name
-  const sortedStudents = [...students].sort((a, b) => a.name.localeCompare(b.name));
+  const sortedStudents = [...students].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
 
   return `
       <div class="panel">
@@ -1447,25 +1569,31 @@ function renderRosterTab(students) {
             <div></div>
             <div>Student</div>
             ${catProps.map((p) => `<div style="text-align:center">${p.display_name}</div>`).join("")}
-            ${hasFlags ? '<div>Flags</div>' : ""}
+            ${hasFlags ? "<div>Flags</div>" : ""}
             ${hasAssignments ? '<div style="text-align:center">Class</div>' : ""}
             <div></div>
           </div>
           <!-- Student rows -->
           ${sortedStudents
             .map((s) => {
-              const initials = s.name.split(" ").map((n) => n[0]).join("");
+              const initials = s.name
+                .split(" ")
+                .map((n) => n[0])
+                .join("");
 
               let assignedClass = null;
               if (hasAssignments) {
-                const assignment = window.currentAssignments.find((a) => a.name === s.name);
+                const assignment = window.currentAssignments.find(
+                  (a) => a.name === s.name,
+                );
                 if (assignment) assignedClass = assignment.assigned_class;
               }
 
               const flagsHtml = flagProps
                 .filter((p) => s[p.name] === true || s[p.name] === "true")
                 .map((p) => {
-                  const label = p.display_name === "504 Plan" ? "504" : p.display_name;
+                  const label =
+                    p.display_name === "504 Plan" ? "504" : p.display_name;
                   return `<span class="chip" style="font-size:9px;">${label}</span>`;
                 })
                 .join("");
@@ -1481,7 +1609,7 @@ function renderRosterTab(students) {
                   })
                   .join("")}
                 ${hasFlags ? `<div style="display:flex;gap:4px;flex-wrap:wrap;align-items:center;">${flagsHtml || "—"}</div>` : ""}
-                ${hasAssignments ? `<div style="text-align: center;"><span class="chip" data-class-chip="${assignedClass}" style="font-size: 10px; background: var(--bg-3); font-weight: 600;">${assignedClass ? (window.classNames[assignedClass] || `Class ${assignedClass}`) : "—"}</span></div>` : ""}
+                ${hasAssignments ? `<div style="text-align: center;"><span class="chip" data-class-chip="${assignedClass}" style="font-size: 10px; background: var(--bg-3); font-weight: 600;">${assignedClass ? window.classNames[assignedClass] || `Class ${assignedClass}` : "—"}</span></div>` : ""}
                 <div style="display:flex; align-items:center; justify-content:flex-end;">
                   <span style="color: var(--ink-4);">›</span>
                 </div>
@@ -1769,9 +1897,12 @@ async function renderResultsScreen() {
   window.currentTeachers = data.teachers || [];
   window.currentAvailableTeachers = data.available_teachers || [];
 
-  console.log('DEBUG renderResultsScreen - hasAssignments:', hasAssignments);
-  console.log('DEBUG renderResultsScreen - assignData:', assignData);
-  console.log('DEBUG renderResultsScreen - solver_status:', assignData?.solver_status);
+  console.log("DEBUG renderResultsScreen - hasAssignments:", hasAssignments);
+  console.log("DEBUG renderResultsScreen - assignData:", assignData);
+  console.log(
+    "DEBUG renderResultsScreen - solver_status:",
+    assignData?.solver_status,
+  );
 
   return `
     <div class="canvas">
@@ -1806,7 +1937,9 @@ async function renderResultsScreen() {
         <span style="color:var(--ink-3);">Avg <strong style="color:var(--ink);margin-left:4px;">${(students.length / data.num_classes).toFixed(1)}</strong></span>
         <span style="color:var(--line);">|</span>
         <span style="color:var(--ink-3);">Size <strong style="color:var(--ink);margin-left:4px;">${data.min_students}–${data.max_students}</strong><span style="color:var(--ink-4);margin-left:4px;">${data.enforce_class_size ? "hard" : "soft"}</span></span>
-        ${hasAssignments && assignData?.solver_status === "OPTIMAL" ? `
+        ${
+          hasAssignments && assignData?.solver_status === "OPTIMAL"
+            ? `
           <span style="color:var(--line);">|</span>
           <span style="display:flex;align-items:center;gap:6px;color:var(--terra);font-weight:600;">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -1815,7 +1948,9 @@ async function renderResultsScreen() {
             </svg>
             Optimal
           </span>
-        ` : ''}
+        `
+            : ""
+        }
         <button class="btn ghost sm" onclick="showGradeSettings('${currentGrade.id}')" style="margin-left:auto;">Edit</button>
       </div>
 
@@ -1827,53 +1962,65 @@ async function renderResultsScreen() {
 // Toggle between simple and advanced balance stats view
 async function toggleBalanceStatsView() {
   window.balanceStatsAdvancedView = !window.balanceStatsAdvancedView;
-  const canvas = document.querySelector('.canvas');
+  const canvas = document.querySelector(".canvas");
   if (canvas) {
     canvas.innerHTML = await renderResultsScreen();
   }
 }
 
 // Generate minimal balance statistics view
-function generateMinimalStats(propertiesToAnalyze, classesList, relationshipStatsHTML, configAtAssignment, assignmentConfig) {
+function generateMinimalStats(
+  propertiesToAnalyze,
+  classesList,
+  relationshipStatsHTML,
+  configAtAssignment,
+  assignmentConfig,
+) {
   // Helper to check if a property weight has changed since assignment
   const hasWeightChanged = (propName, currentWeight) => {
     if (!assignmentConfig) return false;
-    const currentProp = config.properties?.find(p => p.name === propName);
-    const assignmentProp = assignmentConfig.properties?.find(p => p.name === propName);
+    const currentProp = config.properties?.find((p) => p.name === propName);
+    const assignmentProp = assignmentConfig.properties?.find(
+      (p) => p.name === propName,
+    );
     if (!currentProp || !assignmentProp) return false;
     return currentProp.weight !== assignmentProp.weight;
   };
 
   // Group properties by weight (priority)
   const getConstraintLevel = (weight) => {
-    if (weight >= 100) return { label: 'Critical', order: 1 };
-    if (weight >= 80) return { label: 'High', order: 2 };
-    if (weight >= 60) return { label: 'Medium', order: 3 };
-    if (weight >= 40) return { label: 'Mild', order: 4 };
-    return { label: 'Mild', order: 4 };
+    if (weight >= 100) return { label: "Critical", order: 1 };
+    if (weight >= 80) return { label: "High", order: 2 };
+    if (weight >= 60) return { label: "Medium", order: 3 };
+    if (weight >= 40) return { label: "Mild", order: 4 };
+    return { label: "Mild", order: 4 };
   };
 
   // Add hard constraints first
   const hardConstraints = [];
 
   // Check for incompatibilities
-  const allStudents = classesList.flatMap(cls => cls.students);
-  const studentsWithIncompat = allStudents.filter(s => s.incompatible && s.incompatible.length > 0);
+  const allStudents = classesList.flatMap((cls) => cls.students);
+  const studentsWithIncompat = allStudents.filter(
+    (s) => s.incompatible && s.incompatible.length > 0,
+  );
   if (studentsWithIncompat.length > 0) {
     hardConstraints.push({
-      name: 'Incompatibility separation',
+      name: "Incompatibility separation",
       isMandatory: true,
-      level: { label: 'Mandatory requirements', order: 0 }
+      level: { label: "Mandatory requirements", order: 0 },
     });
   }
 
   // Check for teacher uniqueness (hard_toggle type)
-  const teacherUniqueness = config.properties?.find(p => p.type === 'hard_toggle' && p.enabled);
+  const teacherUniqueness = config.properties?.find(
+    (p) => p.type === "hard_toggle" && p.enabled,
+  );
   if (teacherUniqueness) {
     hardConstraints.push({
-      name: teacherUniqueness.display_name || 'Teacher uniqueness',
+      name: teacherUniqueness.display_name || "Teacher uniqueness",
       isMandatory: true,
-      level: { label: 'Mandatory requirements', order: 0 }
+      level: { label: "Mandatory requirements", order: 0 },
     });
   }
 
@@ -1881,102 +2028,110 @@ function generateMinimalStats(propertiesToAnalyze, classesList, relationshipStat
   // Note: This would need to be passed from the grade data
 
   // Process each property and calculate its optimization percentage
-  const propertyStats = propertiesToAnalyze.map(prop => {
-    const propName = prop.name;
-    const displayName = prop.display_name;
-    const weight = prop.weight || 20;
-    const level = getConstraintLevel(weight);
-    const weightChanged = hasWeightChanged(propName, weight);
+  const propertyStats = propertiesToAnalyze
+    .map((prop) => {
+      const propName = prop.name;
+      const displayName = prop.display_name;
+      const weight = prop.weight || 20;
+      const level = getConstraintLevel(weight);
+      const weightChanged = hasWeightChanged(propName, weight);
 
-    // Count values per class
-    const classBreakdowns = classesList.map((cls) => {
-      const students = cls.students;
-      const counts = {};
-      students.forEach((s) => {
-        const value = s[propName];
-        if (value) {
-          counts[value] = (counts[value] || 0) + 1;
-        }
+      // Count values per class
+      const classBreakdowns = classesList.map((cls) => {
+        const students = cls.students;
+        const counts = {};
+        students.forEach((s) => {
+          const value = s[propName];
+          if (value) {
+            counts[value] = (counts[value] || 0) + 1;
+          }
+        });
+        return { classNum: cls.number, counts, total: students.length };
       });
-      return { classNum: cls.number, counts, total: students.length };
-    });
 
-    // Check if property exists in data
-    const hasData = classBreakdowns.some(cb => Object.keys(cb.counts).length > 0);
-    if (!hasData) return null;
+      // Check if property exists in data
+      const hasData = classBreakdowns.some(
+        (cb) => Object.keys(cb.counts).length > 0,
+      );
+      if (!hasData) return null;
 
-    // Get all unique values across all classes
-    const allValues = new Set();
-    classBreakdowns.forEach((cb) =>
-      Object.keys(cb.counts).forEach((v) => allValues.add(v)),
-    );
+      // Get all unique values across all classes
+      const allValues = new Set();
+      classBreakdowns.forEach((cb) =>
+        Object.keys(cb.counts).forEach((v) => allValues.add(v)),
+      );
 
-    // Calculate optimization percentage (0-100%)
-    let totalOptimality = 0;
-    let valueCount = 0;
+      // Calculate optimization percentage (0-100%)
+      let totalOptimality = 0;
+      let valueCount = 0;
 
-    allValues.forEach((value) => {
-      const countsForValue = classBreakdowns.map(cb => cb.counts[value] || 0);
-      const totalCount = countsForValue.reduce((a, b) => a + b, 0);
-      const avg = totalCount / countsForValue.length;
-      const variance =
-        countsForValue.reduce(
-          (sum, count) => sum + Math.pow(count - avg, 2),
-          0,
-        ) / countsForValue.length;
-      const stdDev = Math.sqrt(variance);
+      allValues.forEach((value) => {
+        const countsForValue = classBreakdowns.map(
+          (cb) => cb.counts[value] || 0,
+        );
+        const totalCount = countsForValue.reduce((a, b) => a + b, 0);
+        const avg = totalCount / countsForValue.length;
+        const variance =
+          countsForValue.reduce(
+            (sum, count) => sum + Math.pow(count - avg, 2),
+            0,
+          ) / countsForValue.length;
+        const stdDev = Math.sqrt(variance);
 
-      // Calculate theoretical minimum variance
-      const numClasses = countsForValue.length;
-      const baseCount = Math.floor(totalCount / numClasses);
-      const remainder = totalCount % numClasses;
-      const bestCaseDistribution = new Array(numClasses).fill(baseCount);
-      for (let i = 0; i < remainder; i++) {
-        bestCaseDistribution[i]++;
-      }
-      const minVariance =
-        bestCaseDistribution.reduce(
-          (sum, count) => sum + Math.pow(count - avg, 2),
-          0,
-        ) / bestCaseDistribution.length;
-      const minStdDev = Math.sqrt(minVariance);
+        // Calculate theoretical minimum variance
+        const numClasses = countsForValue.length;
+        const baseCount = Math.floor(totalCount / numClasses);
+        const remainder = totalCount % numClasses;
+        const bestCaseDistribution = new Array(numClasses).fill(baseCount);
+        for (let i = 0; i < remainder; i++) {
+          bestCaseDistribution[i]++;
+        }
+        const minVariance =
+          bestCaseDistribution.reduce(
+            (sum, count) => sum + Math.pow(count - avg, 2),
+            0,
+          ) / bestCaseDistribution.length;
+        const minStdDev = Math.sqrt(minVariance);
 
-      // Calculate theoretical maximum variance
-      const worstCaseDistribution = new Array(numClasses).fill(0);
-      worstCaseDistribution[0] = totalCount;
-      const maxVariance =
-        worstCaseDistribution.reduce(
-          (sum, count) => sum + Math.pow(count - avg, 2),
-          0,
-        ) / worstCaseDistribution.length;
-      const maxStdDev = Math.sqrt(maxVariance);
+        // Calculate theoretical maximum variance
+        const worstCaseDistribution = new Array(numClasses).fill(0);
+        worstCaseDistribution[0] = totalCount;
+        const maxVariance =
+          worstCaseDistribution.reduce(
+            (sum, count) => sum + Math.pow(count - avg, 2),
+            0,
+          ) / worstCaseDistribution.length;
+        const maxStdDev = Math.sqrt(maxVariance);
 
-      // Calculate optimality (0-100%, where 100% = perfect)
-      const range = maxStdDev - minStdDev;
-      const optimality = range > 0 ?
-        Math.max(0, Math.min(100, ((maxStdDev - stdDev) / range) * 100)) : 100;
+        // Calculate optimality (0-100%, where 100% = perfect)
+        const range = maxStdDev - minStdDev;
+        const optimality =
+          range > 0
+            ? Math.max(0, Math.min(100, ((maxStdDev - stdDev) / range) * 100))
+            : 100;
 
-      totalOptimality += optimality;
-      valueCount++;
-    });
+        totalOptimality += optimality;
+        valueCount++;
+      });
 
-    const avgOptimality = valueCount > 0 ? totalOptimality / valueCount : 0;
+      const avgOptimality = valueCount > 0 ? totalOptimality / valueCount : 0;
 
-    return {
-      name: displayName,
-      weight,
-      level,
-      optimality: avgOptimality,
-      isMandatory: false, // Soft constraints are never truly mandatory
-      weightChanged
-    };
-  }).filter(Boolean);
+      return {
+        name: displayName,
+        weight,
+        level,
+        optimality: avgOptimality,
+        isMandatory: false, // Soft constraints are never truly mandatory
+        weightChanged,
+      };
+    })
+    .filter(Boolean);
 
   // Group by constraint level
   const grouped = {};
 
   // Add hard constraints first
-  hardConstraints.forEach(stat => {
+  hardConstraints.forEach((stat) => {
     const levelLabel = stat.level.label;
     if (!grouped[levelLabel]) {
       grouped[levelLabel] = { order: stat.level.order, stats: [] };
@@ -1985,7 +2140,7 @@ function generateMinimalStats(propertiesToAnalyze, classesList, relationshipStat
   });
 
   // Add soft constraints
-  propertyStats.forEach(stat => {
+  propertyStats.forEach((stat) => {
     const levelLabel = stat.level.label;
     if (!grouped[levelLabel]) {
       grouped[levelLabel] = { order: stat.level.order, stats: [] };
@@ -1994,30 +2149,34 @@ function generateMinimalStats(propertiesToAnalyze, classesList, relationshipStat
   });
 
   // Sort groups by order and generate HTML
-  const sortedGroups = Object.entries(grouped)
-    .sort((a, b) => a[1].order - b[1].order);
+  const sortedGroups = Object.entries(grouped).sort(
+    (a, b) => a[1].order - b[1].order,
+  );
 
-  const groupsHTML = sortedGroups.map(([label, data]) => {
-    const statsHTML = data.stats.map(stat => {
-      const optimality = stat.optimality !== undefined ? stat.optimality : 100;
-      const isMandatory = stat.isMandatory;
+  const groupsHTML = sortedGroups
+    .map(([label, data]) => {
+      const statsHTML = data.stats
+        .map((stat) => {
+          const optimality =
+            stat.optimality !== undefined ? stat.optimality : 100;
+          const isMandatory = stat.isMandatory;
 
-      // Color based on optimality
-      let barColor = 'var(--terra)';
-      if (!isMandatory) {
-        if (optimality < 70) barColor = 'var(--amber)';
-        if (optimality < 50) barColor = 'var(--rose)';
-      }
+          // Color based on optimality
+          let barColor = "var(--terra)";
+          if (!isMandatory) {
+            if (optimality < 70) barColor = "var(--amber)";
+            if (optimality < 50) barColor = "var(--rose)";
+          }
 
-      return `
+          return `
         <div style="margin-bottom: 12px;">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
             <div style="display: flex; align-items: center; gap: 6px;">
               <span style="font-size: 13px; font-weight: 500; color: var(--ink);">${stat.name}</span>
-              ${stat.weightChanged ? '<span title="Weight changed since assignment" style="display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: var(--amber-soft); color: var(--amber-ink); font-size: 9px; font-weight: 700;">!</span>' : ''}
+              ${stat.weightChanged ? '<span title="Weight changed since assignment" style="display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: var(--amber-soft); color: var(--amber-ink); font-size: 9px; font-weight: 700;">!</span>' : ""}
             </div>
-            <span style="font-size: 11px; font-family: var(--t-mono); color: ${isMandatory ? 'var(--terra)' : 'var(--ink-3)'}; font-weight: 600;">
-              ${isMandatory ? '✓ Met' : Math.round(optimality) + '% optimal'}
+            <span style="font-size: 11px; font-family: var(--t-mono); color: ${isMandatory ? "var(--terra)" : "var(--ink-3)"}; font-weight: 600;">
+              ${isMandatory ? "✓ Met" : Math.round(optimality) + "% optimal"}
             </span>
           </div>
           <div style="height: 6px; background: var(--bg-2); border-radius: 3px; overflow: hidden;">
@@ -2025,9 +2184,10 @@ function generateMinimalStats(propertiesToAnalyze, classesList, relationshipStat
           </div>
         </div>
       `;
-    }).join('');
+        })
+        .join("");
 
-    return `
+      return `
       <div style="margin-bottom: 20px;">
         <h4 style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-3); margin-bottom: 12px; font-weight: 600;">
           ${label}
@@ -2035,10 +2195,11 @@ function generateMinimalStats(propertiesToAnalyze, classesList, relationshipStat
         ${statsHTML}
       </div>
     `;
-  }).join('');
+    })
+    .join("");
 
   // Calculate friendship stats for minimal view
-  let relationshipHTML = '';
+  let relationshipHTML = "";
   // allStudents already declared above
   if (allStudents.some((s) => "has_friend_in_class" in s)) {
     const studentsWithFriendsDefined = allStudents.filter((s) => {
@@ -2046,15 +2207,18 @@ function generateMinimalStats(propertiesToAnalyze, classesList, relationshipStat
       return friends && friends.length > 0 && friends !== "[]";
     }).length;
 
-    const totalWithFriend = allStudents.filter(s => s.has_friend_in_class).length;
-    const achievementRate = studentsWithFriendsDefined > 0
-      ? (totalWithFriend / studentsWithFriendsDefined) * 100
-      : 0;
+    const totalWithFriend = allStudents.filter(
+      (s) => s.has_friend_in_class,
+    ).length;
+    const achievementRate =
+      studentsWithFriendsDefined > 0
+        ? (totalWithFriend / studentsWithFriendsDefined) * 100
+        : 0;
 
     // Color based on achievement rate
-    let barColor = 'var(--terra)';
-    if (achievementRate < 70) barColor = 'var(--amber)';
-    if (achievementRate < 50) barColor = 'var(--rose)';
+    let barColor = "var(--terra)";
+    if (achievementRate < 70) barColor = "var(--amber)";
+    if (achievementRate < 50) barColor = "var(--rose)";
 
     relationshipHTML = `
       <div style="margin-bottom: 20px;">
@@ -2099,8 +2263,9 @@ function calculateBalanceStats(classesList) {
 
   // Collect all properties to analyze (from enabled config at assignment time)
   const propertiesToAnalyze =
-    configToUse.properties?.filter((p) => p.enabled && p.type !== "relationship") ||
-    [];
+    configToUse.properties?.filter(
+      (p) => p.enabled && p.type !== "relationship",
+    ) || [];
 
   const statCards = propertiesToAnalyze
     .map((prop) => {
@@ -2305,23 +2470,33 @@ function calculateBalanceStats(classesList) {
   if (!statCards && !relationshipStats) return "";
 
   // Generate minimal stats view
-  const minimalStats = generateMinimalStats(propertiesToAnalyze, classesList, relationshipStats, configToUse, assignmentConfig);
+  const minimalStats = generateMinimalStats(
+    propertiesToAnalyze,
+    classesList,
+    relationshipStats,
+    configToUse,
+    assignmentConfig,
+  );
 
   return `
     <div style="margin-bottom: 24px;">
       <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px;">
         <h2 style="margin: 0;">Balance Statistics</h2>
         <button onclick="showBalanceExplanationModal()" style="background: none; border: 1px solid var(--line); border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-size: 11px; color: var(--ink-3); transition: all 0.15s;" onmouseover="this.style.borderColor='var(--ink)'; this.style.color='var(--ink)';" onmouseout="this.style.borderColor='var(--line)'; this.style.color='var(--ink-3)';">?</button>
-        <button onclick="toggleBalanceStatsView()" style="margin-left: auto; padding: 4px 10px; font-size: 11px; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--rad); cursor: pointer; color: var(--ink-3); transition: all 0.15s;" onmouseover="this.style.background='var(--panel)'; this.style.color='var(--ink)';" onmouseout="this.style.background='var(--bg-2)'; this.style.color='var(--ink-3)';">
-          ${showAdvanced ? '← Simple view' : 'Advanced metrics →'}
+        <button onclick="toggleBalanceStatsView()" style="padding: 4px 10px; font-size: 11px; background: var(--bg-2); border: 1px solid var(--line); border-radius: var(--rad); cursor: pointer; color: var(--ink-3); transition: all 0.15s;" onmouseover="this.style.background='var(--panel)'; this.style.color='var(--ink)';" onmouseout="this.style.background='var(--bg-2)'; this.style.color='var(--ink-3)';">
+          ${showAdvanced ? "Simple view" : "Advanced metrics"}
         </button>
       </div>
-      ${showAdvanced ? `
+      ${
+        showAdvanced
+          ? `
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 16px; margin-bottom: 24px;">
           ${statCards}
           ${relationshipStats}
         </div>
-      ` : minimalStats}
+      `
+          : minimalStats
+      }
     </div>
   `;
 }
@@ -2568,15 +2743,22 @@ function calculateRelationshipStats(classesList) {
     // Helper to parse previous_teachers regardless of storage format
     function parsePrevTeachers(prev) {
       if (!prev) return [];
-      if (Array.isArray(prev)) return prev.map((t) => String(t).trim().toLowerCase()).filter(Boolean);
+      if (Array.isArray(prev))
+        return prev.map((t) => String(t).trim().toLowerCase()).filter(Boolean);
       const s = String(prev).trim();
       if (s.startsWith("[")) {
         try {
           const match = s.match(/['"]([^'"]+)['"]/g);
-          if (match) return match.map((m) => m.replace(/['"]/g, "").trim().toLowerCase()).filter(Boolean);
+          if (match)
+            return match
+              .map((m) => m.replace(/['"]/g, "").trim().toLowerCase())
+              .filter(Boolean);
         } catch (e) {}
       }
-      return s.split(/[|,]/).map((t) => t.trim().toLowerCase()).filter(Boolean);
+      return s
+        .split(/[|,]/)
+        .map((t) => t.trim().toLowerCase())
+        .filter(Boolean);
     }
 
     const violations = [];
@@ -2591,7 +2773,10 @@ function calculateRelationshipStats(classesList) {
       });
     });
 
-    const totalStudents = classesList.reduce((sum, cls) => sum + cls.students.length, 0);
+    const totalStudents = classesList.reduce(
+      (sum, cls) => sum + cls.students.length,
+      0,
+    );
     const violationCount = violations.length;
     const qualityColor = violationCount === 0 ? "var(--terra)" : "var(--rose)";
     const qualityLabel = violationCount === 0 ? "Perfect" : "Violations";
@@ -2608,42 +2793,66 @@ function calculateRelationshipStats(classesList) {
           </div>
         </div>
         <div class="panel-b" style="font-size: 12px;">
-          ${violationCount === 0 ? `
+          ${
+            violationCount === 0
+              ? `
             <div style="padding: 8px; background: var(--terra-soft); border-radius: 4px; border: 1px solid var(--terra);">
               <div style="font-weight: 600; color: var(--terra);">All students have new teachers</div>
               <div style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">No student is placed with a previously-had teacher</div>
             </div>
-          ` : `
+          `
+              : `
             <div style="padding: 8px; background: var(--rose-soft); border-radius: 4px; border: 1px solid var(--rose); margin-bottom: 8px;">
               <div style="font-weight: 600; color: var(--rose); margin-bottom: 4px;">${violationCount} student${violationCount !== 1 ? "s" : ""} placed with previous teacher</div>
-              ${violations.slice(0, 4).map((v) => `
+              ${violations
+                .slice(0, 4)
+                .map(
+                  (v) => `
                 <div style="font-size: 11px; color: var(--ink); margin-top: 4px;">
                   • ${v.student} → ${v.teacher} (Class ${v.classNum})
                 </div>
-              `).join("")}
+              `,
+                )
+                .join("")}
               ${violations.length > 4 ? `<div style="font-size: 11px; color: var(--ink-3); margin-top: 4px;">... and ${violations.length - 4} more</div>` : ""}
             </div>
-          `}
+          `
+          }
           <div style="display: flex; gap: 4px; margin-top: 8px;">
-            ${classesList.map((cls) => {
-              const teacher = (teachers[cls.number - 1] || "").trim();
-              if (!teacher) return `<div style="flex:1;text-align:center;font-size:10px;color:var(--ink-4);">—</div>`;
-              const classViolations = violations.filter((v) => v.classNum === cls.number).length;
-              const bg = classViolations > 0 ? "var(--rose-soft)" : "var(--bg-2)";
-              return `
+            ${classesList
+              .map((cls) => {
+                const teacher = (teachers[cls.number - 1] || "").trim();
+                if (!teacher)
+                  return `<div style="flex:1;text-align:center;font-size:10px;color:var(--ink-4);">—</div>`;
+                const classViolations = violations.filter(
+                  (v) => v.classNum === cls.number,
+                ).length;
+                const bg =
+                  classViolations > 0 ? "var(--rose-soft)" : "var(--bg-2)";
+                return `
                 <div style="flex:1;text-align:center;padding:4px 2px;background:${bg};border-radius:4px;">
-                  <div style="font-size:10px;font-weight:500;color:var(--ink);">${teacher.split(" ").map((n) => n[0]).join("").slice(0,2).toUpperCase()}</div>
+                  <div style="font-size:10px;font-weight:500;color:var(--ink);">${teacher
+                    .split(" ")
+                    .map((n) => n[0])
+                    .join("")
+                    .slice(0, 2)
+                    .toUpperCase()}</div>
                   ${classViolations > 0 ? `<div style="font-size:9px;color:var(--rose);">${classViolations}✕</div>` : `<div style="font-size:9px;color:var(--terra);">✓</div>`}
                 </div>
               `;
-            }).join("")}
+              })
+              .join("")}
           </div>
           <div style="display: flex; gap: 4px; margin-top: 4px; padding-top: 6px; border-top: 1px solid var(--line-soft);">
-            ${classesList.map((cls) => `
+            ${classesList
+              .map(
+                (cls) => `
               <div style="flex: 1; text-align: center; font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: 0.05em;">
                 ${window.classNames[cls.number] || `Class ${cls.number}`}
               </div>
-            `).join("")}
+            `,
+              )
+              .join("")}
           </div>
         </div>
       </div>
@@ -2696,9 +2905,10 @@ function renderAssignmentResults(assignments, numClasses, assignData) {
             <input type="checkbox" id="editModeToggle" ${window.editMode ? "checked" : ""} onchange="toggleEditMode(this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
             <span style="font-weight: 500; color: var(--ink);">Edit Mode</span>
           </label>
-          ${window.hasUnsavedChanges && !window.editMode
-            ? `<span style="font-size: 11px; color: var(--amber, var(--ink-3)); font-weight: 500;">● Unsaved changes</span>`
-            : `<span style="font-size: 11px; color: var(--ink-3);">Enable to manually adjust class assignments</span>`
+          ${
+            window.hasUnsavedChanges && !window.editMode
+              ? `<span style="font-size: 11px; color: var(--amber, var(--ink-3)); font-weight: 500;">● Unsaved changes</span>`
+              : `<span style="font-size: 11px; color: var(--ink-3);">Enable to manually adjust class assignments</span>`
           }
         </div>
         <div id="editModeActions" style="display: ${window.editMode || window.hasUnsavedChanges ? "flex" : "none"}; gap: 8px;">
@@ -2757,7 +2967,7 @@ function renderAssignmentResults(assignments, numClasses, assignData) {
           <div class="panel-h">
             <div>
               <h3 style="cursor:pointer;" title="Click to rename" onclick="startClassNameEdit(this, ${cls.number})">${window.classNames[cls.number] || `Class ${cls.number}`}</h3>
-              <div class="teacher-label" data-class-number="${cls.number}" onclick="startTeacherEdit(this, ${cls.number})" style="font-size:11px; color:${(window.currentTeachers[cls.number - 1]) ? "var(--ink-3)" : "var(--ink-4)"}; cursor:pointer; margin-top:1px;">
+              <div class="teacher-label" data-class-number="${cls.number}" onclick="startTeacherEdit(this, ${cls.number})" style="font-size:11px; color:${window.currentTeachers[cls.number - 1] ? "var(--ink-3)" : "var(--ink-4)"}; cursor:pointer; margin-top:1px;">
                 ${window.currentTeachers[cls.number - 1] || "+ Add teacher"}
               </div>
             </div>
@@ -2786,17 +2996,33 @@ function renderAssignmentResults(assignments, numClasses, assignData) {
                       <div class="sn">${s.name}</div>
                       ${(() => {
                         const catProps = (config.properties || []).filter(
-                          (p) => p.enabled && p.type !== "boolean" && p.type !== "relationship" && p.type !== "hard_toggle" && p.name !== "gender"
+                          (p) =>
+                            p.enabled &&
+                            p.type !== "boolean" &&
+                            p.type !== "relationship" &&
+                            p.type !== "hard_toggle" &&
+                            p.name !== "gender",
                         );
                         const chips = catProps
-                          .filter((p) => s[p.name] && s[p.name] !== "m" && s[p.name] !== "neutral")
+                          .filter(
+                            (p) =>
+                              s[p.name] &&
+                              s[p.name] !== "m" &&
+                              s[p.name] !== "neutral",
+                          )
                           .map((p) => {
                             const v = s[p.name];
                             const label = `${p.display_name.slice(0, 3)} ${v === "h" ? "H" : "L"}`;
-                            const bg = v === "h" ? "var(--rose-soft)" : "var(--amber-soft, var(--bg-2))";
+                            const bg =
+                              v === "h"
+                                ? "var(--rose-soft)"
+                                : "var(--amber-soft, var(--bg-2))";
                             return `<span class="chip" style="font-size:8px;padding:1px 4px;background:${bg};">${label}</span>`;
-                          }).join("");
-                        return chips ? `<div class="student-meta-chips" style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px;">${chips}</div>` : "";
+                          })
+                          .join("");
+                        return chips
+                          ? `<div class="student-meta-chips" style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px;">${chips}</div>`
+                          : "";
                       })()}
                     </div>
                     <div class="student-flag-chips" style="display:flex; gap:3px; flex-shrink:0;">
@@ -2868,9 +3094,11 @@ function startClassNameEdit(el, classNumber) {
     h3.onclick = () => startClassNameEdit(h3, classNumber);
     input.replaceWith(h3);
     // Also update roster chips
-    document.querySelectorAll(`[data-class-chip="${classNumber}"]`).forEach((chip) => {
-      chip.textContent = newName;
-    });
+    document
+      .querySelectorAll(`[data-class-chip="${classNumber}"]`)
+      .forEach((chip) => {
+        chip.textContent = newName;
+      });
   };
 
   input.addEventListener("blur", finish);
@@ -2884,7 +3112,9 @@ function startClassNameEdit(el, classNumber) {
 }
 
 function startTeacherEdit(el, classNumber) {
-  const available = (window.currentAvailableTeachers || []).filter(t => t && t.trim());
+  const available = (window.currentAvailableTeachers || []).filter(
+    (t) => t && t.trim(),
+  );
   const current = window.currentTeachers[classNumber - 1] || "";
 
   // If no teachers configured, show a tooltip-style message
@@ -2899,18 +3129,19 @@ function startTeacherEdit(el, classNumber) {
 
   // Build a select dropdown from available teachers, excluding those already assigned to other classes
   const assignedElsewhere = new Set(
-    (window.currentTeachers || []).filter((t, i) => t && i !== classNumber - 1)
+    (window.currentTeachers || []).filter((t, i) => t && i !== classNumber - 1),
   );
 
   const select = document.createElement("select");
-  select.style.cssText = "font-size:11px;font-family:inherit;color:var(--ink-3);background:var(--panel);border:1px solid var(--terra);border-radius:4px;outline:none;padding:1px 4px;max-width:160px;";
+  select.style.cssText =
+    "font-size:11px;font-family:inherit;color:var(--ink-3);background:var(--panel);border:1px solid var(--terra);border-radius:4px;outline:none;padding:1px 4px;max-width:160px;";
 
   const blankOpt = document.createElement("option");
   blankOpt.value = "";
   blankOpt.textContent = "— unassigned —";
   select.appendChild(blankOpt);
 
-  available.forEach(t => {
+  available.forEach((t) => {
     if (assignedElsewhere.has(t)) return;
     const opt = document.createElement("option");
     opt.value = t;
@@ -3135,10 +3366,12 @@ function showStudentDetail(name) {
             <button class="seg ${student.reading === "h" ? "active" : ""}" data-property="reading" data-value="h">High</button>
           </div>
         </div>
-        ${(config.properties || []).filter((p) => p.custom && p.enabled !== false).map((prop) => {
-          if (prop.type === "boolean") {
-            const val = student[prop.name];
-            return `
+        ${(config.properties || [])
+          .filter((p) => p.custom && p.enabled !== false)
+          .map((prop) => {
+            if (prop.type === "boolean") {
+              const val = student[prop.name];
+              return `
         <div class="prop-row">
           <span class="k">${prop.display_name}</span>
           <div class="segmented">
@@ -3146,17 +3379,18 @@ function showStudentDetail(name) {
             <button class="seg ${val ? "active" : ""}" data-property="${prop.name}" data-value="true">Yes</button>
           </div>
         </div>`;
-          } else {
-            const val = student[prop.name] ?? "";
-            return `
+            } else {
+              const val = student[prop.name] ?? "";
+              return `
         <div class="prop-row">
           <span class="k">${prop.display_name}</span>
           <div class="segmented">
             ${(prop.values || []).map((v) => `<button class="seg ${val === v ? "active" : ""}" data-property="${prop.name}" data-value="${v}">${v}</button>`).join("")}
           </div>
         </div>`;
-          }
-        }).join("")}
+            }
+          })
+          .join("")}
       </div>
 
       <div class="detail-section">
@@ -3244,13 +3478,23 @@ function showStudentDetail(name) {
             const prev = student.previous_teachers;
             const list = Array.isArray(prev)
               ? prev
-              : (prev ? String(prev).split("|").map(t => t.trim()).filter(Boolean) : []);
-            if (list.length === 0) return '<span class="muted" style="font-size:12px">None recorded.</span>';
-            return list.map(t => `
+              : prev
+                ? String(prev)
+                    .split("|")
+                    .map((t) => t.trim())
+                    .filter(Boolean)
+                : [];
+            if (list.length === 0)
+              return '<span class="muted" style="font-size:12px">None recorded.</span>';
+            return list
+              .map(
+                (t) => `
               <span class="friend-pill" style="display:inline-flex; align-items:center; gap:4px">
                 <span style="font-size:12px">${t}</span>
                 <button onclick="removePreviousTeacher('${student.name.replace(/'/g, "\\'")}', '${t.replace(/'/g, "\\'")}')" style="background:none; border:none; cursor:pointer; padding:0 2px; color:var(--ink-3); font-size:12px; line-height:1" title="Remove">×</button>
-              </span>`).join("");
+              </span>`,
+              )
+              .join("");
           })()}
         </div>
       </div>
@@ -3287,7 +3531,8 @@ function startStudentNameEdit(el, currentName) {
   const input = document.createElement("input");
   input.type = "text";
   input.value = currentName;
-  input.style.cssText = "font:inherit;font-size:inherit;font-weight:inherit;color:inherit;background:transparent;border:none;border-bottom:1px solid var(--terra);outline:none;width:200px;padding:0;";
+  input.style.cssText =
+    "font:inherit;font-size:inherit;font-weight:inherit;color:inherit;background:transparent;border:none;border-bottom:1px solid var(--terra);outline:none;width:200px;padding:0;";
   el.replaceWith(input);
   input.focus();
   input.select();
@@ -3299,7 +3544,7 @@ function startStudentNameEdit(el, currentName) {
       return;
     }
     // Check for duplicate
-    if ((window.currentStudents || []).some(s => s.name === newName)) {
+    if ((window.currentStudents || []).some((s) => s.name === newName)) {
       showNotice("A student with that name already exists", "error");
       input.replaceWith(el);
       return;
@@ -3310,7 +3555,10 @@ function startStudentNameEdit(el, currentName) {
   input.addEventListener("blur", finish);
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") input.blur();
-    if (e.key === "Escape") { input.value = currentName; input.blur(); }
+    if (e.key === "Escape") {
+      input.value = currentName;
+      input.blur();
+    }
   });
 }
 
@@ -3318,28 +3566,36 @@ async function renameStudent(oldName, newName) {
   if (!currentGrade) return;
 
   // Update in currentStudents
-  const student = (window.currentStudents || []).find(s => s.name === oldName);
+  const student = (window.currentStudents || []).find(
+    (s) => s.name === oldName,
+  );
   if (!student) return;
   student.name = newName;
 
   // Update any references in other students' friends/incompatible fields
-  (window.currentStudents || []).forEach(s => {
+  (window.currentStudents || []).forEach((s) => {
     if (s.friends) {
-      s.friends = s.friends.split(",").map(f => f.trim() === oldName ? newName : f.trim()).join(",");
+      s.friends = s.friends
+        .split(",")
+        .map((f) => (f.trim() === oldName ? newName : f.trim()))
+        .join(",");
     }
     if (s.incompatible) {
-      s.incompatible = s.incompatible.split(",").map(f => f.trim() === oldName ? newName : f.trim()).join(",");
+      s.incompatible = s.incompatible
+        .split(",")
+        .map((f) => (f.trim() === oldName ? newName : f.trim()))
+        .join(",");
     }
   });
 
   // Update assignments if they exist
   if (window.currentAssignments) {
-    window.currentAssignments.forEach(a => {
+    window.currentAssignments.forEach((a) => {
       if (a.name === oldName) a.name = newName;
     });
   }
   if (window.solverBaseline) {
-    window.solverBaseline.forEach(a => {
+    window.solverBaseline.forEach((a) => {
       if (a.name === oldName) a.name = newName;
     });
   }
@@ -3357,7 +3613,10 @@ async function renameStudent(oldName, newName) {
       await fetch(`/api/grades/${currentGrade.id}/assignments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assignments: window.currentAssignments, update_baseline: true }),
+        body: JSON.stringify({
+          assignments: window.currentAssignments,
+          update_baseline: true,
+        }),
       });
     }
 
@@ -3372,11 +3631,16 @@ window.startStudentNameEdit = startStudentNameEdit;
 function getPreviousTeacherList(student) {
   const prev = student.previous_teachers;
   if (Array.isArray(prev)) return prev.filter(Boolean);
-  return prev ? String(prev).split("|").map(t => t.trim()).filter(Boolean) : [];
+  return prev
+    ? String(prev)
+        .split("|")
+        .map((t) => t.trim())
+        .filter(Boolean)
+    : [];
 }
 
 async function savePreviousTeachers(studentName, list) {
-  const student = window.currentStudents?.find(s => s.name === studentName);
+  const student = window.currentStudents?.find((s) => s.name === studentName);
   if (!student) return;
   student.previous_teachers = list;
   await fetch(`/api/grades/${currentGrade.id}/students`, {
@@ -3408,7 +3672,7 @@ function addPreviousTeacher(studentName) {
     const val = input.value.trim();
     wrapper.remove();
     if (!val) return;
-    const student = window.currentStudents?.find(s => s.name === studentName);
+    const student = window.currentStudents?.find((s) => s.name === studentName);
     if (!student) return;
     const list = getPreviousTeacherList(student);
     if (!list.includes(val)) {
@@ -3419,16 +3683,18 @@ function addPreviousTeacher(studentName) {
   };
 
   input.addEventListener("blur", commit);
-  input.addEventListener("keydown", e => {
+  input.addEventListener("keydown", (e) => {
     if (e.key === "Enter") input.blur();
-    if (e.key === "Escape") { wrapper.remove(); }
+    if (e.key === "Escape") {
+      wrapper.remove();
+    }
   });
 }
 
 async function removePreviousTeacher(studentName, teacherName) {
-  const student = window.currentStudents?.find(s => s.name === studentName);
+  const student = window.currentStudents?.find((s) => s.name === studentName);
   if (!student) return;
-  const list = getPreviousTeacherList(student).filter(t => t !== teacherName);
+  const list = getPreviousTeacherList(student).filter((t) => t !== teacherName);
   await savePreviousTeachers(studentName, list);
   showStudentDetail(studentName);
 }
@@ -3638,10 +3904,16 @@ async function _handleImportModalFile(file) {
   const friendsIdx = headers.findIndex((h) => h.includes("friend"));
   const incompIdx = headers.findIndex((h) => h.includes("incompatible"));
 
-  const customCols = (config.properties || []).filter((p) => p.custom).map((prop) => ({
-    prop,
-    idx: headers.findIndex((h) => h === prop.name || h === prop.display_name.toLowerCase().replace(/\s+/g, "_")),
-  }));
+  const customCols = (config.properties || [])
+    .filter((p) => p.custom)
+    .map((prop) => ({
+      prop,
+      idx: headers.findIndex(
+        (h) =>
+          h === prop.name ||
+          h === prop.display_name.toLowerCase().replace(/\s+/g, "_"),
+      ),
+    }));
 
   if (nameIdx === -1) {
     if (statusEl) {
@@ -3662,9 +3934,13 @@ async function _handleImportModalFile(file) {
     const customData = {};
     customCols.forEach(({ prop, idx }) => {
       if (prop.type === "boolean") {
-        customData[prop.name] = idx !== -1 ? normalizeYesNo(cells[idx]) === "y" : false;
+        customData[prop.name] =
+          idx !== -1 ? normalizeYesNo(cells[idx]) === "y" : false;
       } else {
-        customData[prop.name] = idx !== -1 ? (cells[idx]?.trim() || prop.values?.[0] || "") : (prop.values?.[0] || "");
+        customData[prop.name] =
+          idx !== -1
+            ? cells[idx]?.trim() || prop.values?.[0] || ""
+            : prop.values?.[0] || "";
       }
     });
     students.push({
@@ -3752,10 +4028,16 @@ async function handleGradeCSVFile(file) {
   const friendsIdx = headers.findIndex((h) => h.includes("friend"));
   const incompIdx = headers.findIndex((h) => h.includes("incompatible"));
 
-  const customCols = (config.properties || []).filter((p) => p.custom).map((prop) => ({
-    prop,
-    idx: headers.findIndex((h) => h === prop.name || h === prop.display_name.toLowerCase().replace(/\s+/g, "_")),
-  }));
+  const customCols = (config.properties || [])
+    .filter((p) => p.custom)
+    .map((prop) => ({
+      prop,
+      idx: headers.findIndex(
+        (h) =>
+          h === prop.name ||
+          h === prop.display_name.toLowerCase().replace(/\s+/g, "_"),
+      ),
+    }));
 
   if (nameIdx === -1) {
     if (errorEl) errorEl.textContent = 'CSV must have a "name" column.';
@@ -3774,9 +4056,13 @@ async function handleGradeCSVFile(file) {
     const customData = {};
     customCols.forEach(({ prop, idx }) => {
       if (prop.type === "boolean") {
-        customData[prop.name] = idx !== -1 ? normalizeYesNo(cells[idx]) === "y" : false;
+        customData[prop.name] =
+          idx !== -1 ? normalizeYesNo(cells[idx]) === "y" : false;
       } else {
-        customData[prop.name] = idx !== -1 ? (cells[idx]?.trim() || prop.values?.[0] || "") : (prop.values?.[0] || "");
+        customData[prop.name] =
+          idx !== -1
+            ? cells[idx]?.trim() || prop.values?.[0] || ""
+            : prop.values?.[0] || "";
       }
     });
     students.push({
@@ -3872,9 +4158,18 @@ function showSavePrompt(message) {
         </div>
       </div>
     `;
-    overlay.querySelector("#sp-cancel").addEventListener("click", () => { overlay.remove(); resolve("cancel"); });
-    overlay.querySelector("#sp-discard").addEventListener("click", () => { overlay.remove(); resolve("discard"); });
-    overlay.querySelector("#sp-save").addEventListener("click", () => { overlay.remove(); resolve("save"); });
+    overlay.querySelector("#sp-cancel").addEventListener("click", () => {
+      overlay.remove();
+      resolve("cancel");
+    });
+    overlay.querySelector("#sp-discard").addEventListener("click", () => {
+      overlay.remove();
+      resolve("discard");
+    });
+    overlay.querySelector("#sp-save").addEventListener("click", () => {
+      overlay.remove();
+      resolve("save");
+    });
     document.body.appendChild(overlay);
     overlay.querySelector("#sp-save").focus();
   });
@@ -4252,9 +4547,11 @@ function openAddStudentModal() {
             .join("")}
         </div>
 
-        ${(config.properties || []).filter((p) => p.custom && p.enabled !== false).map((prop) => {
-          if (prop.type === "boolean") {
-            return `
+        ${(config.properties || [])
+          .filter((p) => p.custom && p.enabled !== false)
+          .map((prop) => {
+            if (prop.type === "boolean") {
+              return `
         <div>
           <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">${prop.display_name}</label>
           <div class="segmented">
@@ -4262,17 +4559,18 @@ function openAddStudentModal() {
             <button class="seg" data-field="${prop.name}" data-value="true">Yes</button>
           </div>
         </div>`;
-          } else {
-            const values = prop.values || [];
-            return `
+            } else {
+              const values = prop.values || [];
+              return `
         <div>
           <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">${prop.display_name}</label>
           <div class="segmented">
             ${values.map((v, i) => `<button class="seg ${i === 0 ? "active" : ""}" data-field="${prop.name}" data-value="${v}">${v}</button>`).join("")}
           </div>
         </div>`;
-          }
-        }).join("")}
+            }
+          })
+          .join("")}
 
         <div id="add-student-error" style="font-size:12px;color:var(--rose);display:none"></div>
       </div>
@@ -4332,13 +4630,15 @@ async function submitAddStudent() {
   });
 
   const customValues = {};
-  (config.properties || []).filter((p) => p.custom).forEach((prop) => {
-    if (prop.type === "boolean") {
-      customValues[prop.name] = fields[prop.name] === "true";
-    } else {
-      customValues[prop.name] = fields[prop.name] ?? (prop.values?.[0] || "");
-    }
-  });
+  (config.properties || [])
+    .filter((p) => p.custom)
+    .forEach((prop) => {
+      if (prop.type === "boolean") {
+        customValues[prop.name] = fields[prop.name] === "true";
+      } else {
+        customValues[prop.name] = fields[prop.name] ?? (prop.values?.[0] || "");
+      }
+    });
 
   const newStudent = {
     name,
@@ -4457,11 +4757,14 @@ async function deleteStudent(studentName) {
 
     // Save updated assignments if they exist
     if (window.currentAssignments) {
-      const assignRes = await fetch(`/api/grades/${currentGrade.id}/assignments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assignments: window.currentAssignments }),
-      });
+      const assignRes = await fetch(
+        `/api/grades/${currentGrade.id}/assignments`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ assignments: window.currentAssignments }),
+        },
+      );
       if (!assignRes.ok) throw new Error("Failed to save assignments");
     }
 
@@ -4593,9 +4896,9 @@ function exportCSV() {
 
 function exportAllData() {
   // Trigger download via a temporary link
-  const a = document.createElement('a');
-  a.href = '/api/export-data';
-  a.download = '';
+  const a = document.createElement("a");
+  a.href = "/api/export-data";
+  a.download = "";
   document.body.appendChild(a);
   a.click();
   a.remove();
@@ -4604,30 +4907,34 @@ function exportAllData() {
 async function importAllData(input) {
   const file = input.files[0];
   if (!file) return;
-  const statusEl = document.getElementById('import-status');
-  statusEl.textContent = 'Importing…';
-  statusEl.style.color = 'var(--ink-3)';
-  statusEl.style.display = 'block';
+  const statusEl = document.getElementById("import-status");
+  statusEl.textContent = "Importing…";
+  statusEl.style.color = "var(--ink-3)";
+  statusEl.style.display = "block";
 
   const formData = new FormData();
-  formData.append('file', file);
+  formData.append("file", file);
 
   try {
-    const res = await fetch('/api/import-data', { method: 'POST', body: formData });
+    const res = await fetch("/api/import-data", {
+      method: "POST",
+      body: formData,
+    });
     const data = await res.json();
     if (res.ok) {
-      statusEl.textContent = 'Imported successfully. Reloading…';
-      statusEl.style.color = 'var(--sage-ink)';
+      statusEl.textContent = "Imported successfully. Reloading…";
+      statusEl.style.color = "var(--sage-ink)";
       setTimeout(() => window.location.reload(), 1200);
     } else {
-      statusEl.textContent = data.error || 'Import failed.';
-      statusEl.style.color = 'var(--rose)';
+      statusEl.textContent = data.error || "Import failed.";
+      statusEl.style.color = "var(--rose)";
     }
   } catch (err) {
-    statusEl.textContent = 'Import failed. Make sure the file is a valid .classify backup.';
-    statusEl.style.color = 'var(--rose)';
+    statusEl.textContent =
+      "Import failed. Make sure the file is a valid .classify backup.";
+    statusEl.style.color = "var(--rose)";
   }
-  input.value = '';
+  input.value = "";
 }
 
 function exportAssignmentCSV() {
@@ -4660,15 +4967,18 @@ function exportAssignmentCSV() {
   const csvLines = [
     headers.join(","),
     ...rows.map((row) =>
-      headers
-        .map((h) => `"${String(row[h]).replace(/"/g, '""')}"`)
-        .join(","),
+      headers.map((h) => `"${String(row[h]).replace(/"/g, '""')}"`).join(","),
     ),
   ];
 
   const gradeName = currentGrade?.name || "grade";
-  const year = (config.active_school_year || config.school_year || "").replace(/[–—]/g, "-");
-  const filename = year ? `${gradeName}_${year}_assignment.csv` : `${gradeName}_assignment.csv`;
+  const year = (config.active_school_year || config.school_year || "").replace(
+    /[–—]/g,
+    "-",
+  );
+  const filename = year
+    ? `${gradeName}_${year}_assignment.csv`
+    : `${gradeName}_assignment.csv`;
   downloadCSV(csvLines.join("\n"), filename);
 }
 
@@ -4743,10 +5053,16 @@ function showAssignmentHighlight(name) {
 
   const student = (window.currentStudents || []).find((s) => s.name === name);
   const friends = student?.friends
-    ? student.friends.split(",").map((f) => f.trim()).filter(Boolean)
+    ? student.friends
+        .split(",")
+        .map((f) => f.trim())
+        .filter(Boolean)
     : [];
   const incompatibles = student?.incompatible
-    ? student.incompatible.split(",").map((f) => f.trim()).filter(Boolean)
+    ? student.incompatible
+        .split(",")
+        .map((f) => f.trim())
+        .filter(Boolean)
     : [];
 
   container.querySelectorAll(".student-row").forEach((row) => {
@@ -4756,13 +5072,15 @@ function showAssignmentHighlight(name) {
     if (friends.includes(rowName)) {
       const el = document.createElement("span");
       el.className = "assign-indicator";
-      el.style.cssText = "font-size:10px;font-weight:700;color:var(--sage);line-height:1;flex-shrink:0;margin-left:auto;padding-left:6px;";
+      el.style.cssText =
+        "font-size:10px;font-weight:700;color:var(--sage);line-height:1;flex-shrink:0;margin-left:auto;padding-left:6px;";
       el.textContent = "F";
       row.appendChild(el);
     } else if (incompatibles.includes(rowName)) {
       const el = document.createElement("span");
       el.className = "assign-indicator";
-      el.style.cssText = "font-size:14px;color:var(--error);line-height:1;flex-shrink:0;margin-left:auto;padding-left:6px;";
+      el.style.cssText =
+        "font-size:14px;color:var(--error);line-height:1;flex-shrink:0;margin-left:auto;padding-left:6px;";
       el.textContent = "⊘";
       row.appendChild(el);
     }
@@ -4809,35 +5127,40 @@ function clearAssignmentFilters() {
 function applyAssignmentFilters() {
   const query = (window.assignmentSearch || "").toLowerCase();
   const flags = window.assignmentFilterFlags || new Set();
-  const allStudents = [...(window.currentAssignments || []), ...(window.currentStudents || [])];
+  const allStudents = [
+    ...(window.currentAssignments || []),
+    ...(window.currentStudents || []),
+  ];
 
-  document.querySelectorAll(".student-row[data-student-name]").forEach((row) => {
-    const name = row.getAttribute("data-student-name");
-    let matches = true;
+  document
+    .querySelectorAll(".student-row[data-student-name]")
+    .forEach((row) => {
+      const name = row.getAttribute("data-student-name");
+      let matches = true;
 
-    if (query) matches = name.toLowerCase().includes(query);
+      if (query) matches = name.toLowerCase().includes(query);
 
-    if (matches && flags.size > 0) {
-      const student = allStudents.find((s) => s.name === name);
-      if (student) {
-        for (const flag of flags) {
-          if (!(student[flag] === true || student[flag] === "true")) {
-            matches = false;
-            break;
+      if (matches && flags.size > 0) {
+        const student = allStudents.find((s) => s.name === name);
+        if (student) {
+          for (const flag of flags) {
+            if (!(student[flag] === true || student[flag] === "true")) {
+              matches = false;
+              break;
+            }
           }
+        } else {
+          matches = false;
         }
-      } else {
-        matches = false;
       }
-    }
 
-    row.style.opacity = matches ? "1" : "0.12";
-    row.style.pointerEvents = matches ? "" : "none";
-  });
+      row.style.opacity = matches ? "1" : "0.12";
+      row.style.pointerEvents = matches ? "" : "none";
+    });
 
   const clearBtn = document.getElementById("clearFiltersBtn");
   if (clearBtn) {
-    clearBtn.style.display = (query || flags.size > 0) ? "" : "none";
+    clearBtn.style.display = query || flags.size > 0 ? "" : "none";
   }
 }
 
@@ -4900,7 +5223,8 @@ async function handleDrop(event) {
     return;
   }
 
-  const involvesUnassigned = targetClass === 0 || draggedStudent.currentClass === 0;
+  const involvesUnassigned =
+    targetClass === 0 || draggedStudent.currentClass === 0;
 
   if (targetClass === 0) {
     // Dragging back to unassigned — remove from assignments
@@ -4932,7 +5256,10 @@ async function handleDrop(event) {
       await fetch(`/api/grades/${currentGrade.id}/assignments`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ assignments: window.currentAssignments, update_baseline: true }),
+        body: JSON.stringify({
+          assignments: window.currentAssignments,
+          update_baseline: true,
+        }),
       });
     } catch (err) {
       console.error("Failed to save assignment change:", err);
@@ -4989,28 +5316,45 @@ function toggleCleanView() {
 window.toggleCleanView = toggleCleanView;
 
 function showGradeInfoModal() {
-  const props = (config.properties || []).filter((p) => p.enabled && p.type !== "relationship" && p.type !== "hard_toggle" && p.name !== "gender");
+  const props = (config.properties || []).filter(
+    (p) =>
+      p.enabled &&
+      p.type !== "relationship" &&
+      p.type !== "hard_toggle" &&
+      p.name !== "gender",
+  );
   const boolProps = props.filter((p) => p.type === "boolean");
-  const catProps  = props.filter((p) => p.type !== "boolean");
+  const catProps = props.filter((p) => p.type !== "boolean");
 
-  const flagRows = boolProps.map((p) => `
+  const flagRows = boolProps
+    .map(
+      (p) => `
     <tr>
       <td style="padding:5px 10px 5px 0;font-weight:500;white-space:nowrap;">${p.display_name === "504 Plan" ? "504" : p.display_name}</td>
       <td style="padding:5px 0;color:var(--ink-3);font-size:12px;">${p.display_name}</td>
-    </tr>`).join("");
+    </tr>`,
+    )
+    .join("");
 
-  const catRows = catProps.map((p) => `
+  const catRows = catProps
+    .map(
+      (p) => `
     <tr>
       <td style="padding:5px 10px 5px 0;font-weight:500;white-space:nowrap;">
-        <span class="chip" style="font-size:8px;padding:1px 4px;background:var(--rose-soft);margin-right:3px;">${p.display_name.slice(0,3)} H</span>
-        <span class="chip" style="font-size:8px;padding:1px 4px;background:var(--amber-soft, var(--bg-2));">${p.display_name.slice(0,3)} L</span>
+        <span class="chip" style="font-size:8px;padding:1px 4px;background:var(--rose-soft);margin-right:3px;">${p.display_name.slice(0, 3)} H</span>
+        <span class="chip" style="font-size:8px;padding:1px 4px;background:var(--amber-soft, var(--bg-2));">${p.display_name.slice(0, 3)} L</span>
       </td>
       <td style="padding:5px 0;color:var(--ink-3);font-size:12px;">${p.display_name} — H = High, L = Low (medium not shown)</td>
-    </tr>`).join("");
+    </tr>`,
+    )
+    .join("");
 
   const overlay = document.createElement("div");
-  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:2000;display:flex;align-items:center;justify-content:center;";
-  overlay.addEventListener("click", (e) => { if (e.target === overlay) overlay.remove(); });
+  overlay.style.cssText =
+    "position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:2000;display:flex;align-items:center;justify-content:center;";
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
 
   overlay.innerHTML = `
     <div style="background:var(--panel);border-radius:12px;width:460px;max-width:90vw;max-height:80vh;overflow:auto;padding:24px;box-shadow:0 12px 40px rgba(0,0,0,0.2);">
@@ -5019,19 +5363,27 @@ function showGradeInfoModal() {
         <button onclick="this.closest('.modal-overlay').remove()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--ink-3);line-height:1;">×</button>
       </div>
 
-      ${catProps.length > 0 ? `
+      ${
+        catProps.length > 0
+          ? `
         <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin:0 0 10px;">Level indicators</h3>
         <table style="width:100%;border-collapse:collapse;margin-bottom:20px;font-size:13px;">
           ${catRows}
         </table>
-      ` : ""}
+      `
+          : ""
+      }
 
-      ${boolProps.length > 0 ? `
+      ${
+        boolProps.length > 0
+          ? `
         <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin:0 0 10px;">Flag chips</h3>
         <table style="width:100%;border-collapse:collapse;font-size:13px;">
           ${flagRows}
         </table>
-      ` : ""}
+      `
+          : ""
+      }
 
       <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line-soft);">
         <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin:0 0 10px;">Hover indicators</h3>
@@ -5045,7 +5397,9 @@ function showGradeInfoModal() {
 
   // Close button targets
   overlay.classList.add("modal-overlay");
-  overlay.querySelector("button").addEventListener("click", () => overlay.remove());
+  overlay
+    .querySelector("button")
+    .addEventListener("click", () => overlay.remove());
 
   document.body.appendChild(overlay);
 }
@@ -5067,7 +5421,9 @@ window.toggleBalanceStatsView = toggleBalanceStatsView;
 // Edit mode functions
 async function toggleEditMode(enabled) {
   if (!enabled && window.hasUnsavedChanges) {
-    const action = await showSavePrompt("Save your manual changes before exiting edit mode?");
+    const action = await showSavePrompt(
+      "Save your manual changes before exiting edit mode?",
+    );
     if (action === "cancel") {
       // Re-check the checkbox
       const cb = document.getElementById("editModeToggle");
@@ -5104,7 +5460,10 @@ async function saveManualChanges() {
     const response = await fetch(`/api/grades/${currentGrade.id}/assignments`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ assignments: window.currentAssignments, update_baseline: true }),
+      body: JSON.stringify({
+        assignments: window.currentAssignments,
+        update_baseline: true,
+      }),
     });
 
     if (response.ok) {

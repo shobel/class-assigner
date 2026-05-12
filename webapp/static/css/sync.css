@@ -1,0 +1,94 @@
+/* Multi-User Sync Styles */
+
+/* Read-only mode - disable most interactions */
+body.read-only-mode button:not(.read-only-allowed),
+body.read-only-mode input:not(.read-only-allowed),
+body.read-only-mode select:not(.read-only-allowed),
+body.read-only-mode textarea:not(.read-only-allowed),
+body.read-only-mode .draggable {
+  pointer-events: none;
+  opacity: 0.5;
+  cursor: not-allowed !important;
+}
+
+/* Read-only banner */
+body.read-only-mode::before {
+  content: 'Read-only mode';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  background: var(--amber-soft, #fef3c7);
+  color: var(--amber-ink, #92400e);
+  padding: 8px 16px;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--amber, #f59e0b);
+}
+
+body.read-only-mode .app {
+  padding-top: 40px;
+}
+
+/* Lock indicator */
+#lock-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--bg-2);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--rad);
+  font-size: 12px;
+}
+
+.lock-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.lock-dot.free {
+  background: var(--ink-4);
+}
+
+.lock-dot.active {
+  background: var(--terra);
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.lock-dot.locked {
+  background: var(--amber);
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+.lock-text {
+  color: var(--ink-3);
+  font-weight: 500;
+}
+
+/* Tooltip for disabled controls */
+body.read-only-mode button[disabled]:hover::after,
+body.read-only-mode button:not(.read-only-allowed):hover::after {
+  content: attr(data-readonly-hint, 'Wait for other user to finish');
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 11px;
+  white-space: nowrap;
+  border-radius: var(--rad);
+  margin-bottom: 4px;
+  pointer-events: none;
+  z-index: 1000;
+}

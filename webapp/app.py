@@ -14,7 +14,9 @@ import socket
 import platform
 import pandas as pd
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
+import threading
+from functools import wraps
 
 
 def get_resource_path(relative_path):
@@ -98,6 +100,27 @@ DATA_DIR = get_data_dir()
 
 SCHOOL_YEARS_DIR = DATA_DIR / "school_years"
 SCHOOL_YEARS_DIR.mkdir(exist_ok=True)
+
+# ============================================================================
+# Multi-User Sync State
+# ============================================================================
+
+# Active lock state
+active_lock = {
+    'session_id': None,
+    'held_by': None,
+    'acquired_at': None,
+    'expires': None,
+}
+lock_mutex = threading.Lock()
+
+# Last modification timestamp for sync
+last_modified = {
+    'timestamp': datetime.now().isoformat(),
+    'changed_by': None,
+    'scope': None,
+}
+sync_mutex = threading.Lock()
 
 CONFIG_FILE = DATA_DIR / "config.json"
 
@@ -414,6 +437,43 @@ def save_students_data(data):
         json.dump(data, f, indent=2)
 
 
+# ============================================================================
+# Multi-User Sync Helpers
+# ============================================================================
+
+def update_last_modified(changed_by=None, scope=None):
+    """Update last modified timestamp for sync"""
+    global last_modified
+    with sync_mutex:
+        last_modified = {
+            'timestamp': datetime.now().isoformat(),
+            'changed_by': changed_by,
+            'scope': scope,
+        }
+
+
+def require_lock(f):
+    """Decorator to require active lock for mutating operations"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        session_id = request.headers.get('X-Session-ID')
+        if not session_id:
+            return jsonify({'error': 'No session ID provided'}), 403
+
+        with lock_mutex:
+            # Check if lock is held by this session
+            if active_lock['session_id'] != session_id:
+                # Check if lock has expired
+                if active_lock['expires'] and datetime.fromisoformat(active_lock['expires']) < datetime.now():
+                    # Lock expired, allow operation
+                    pass
+                else:
+                    return jsonify({'error': 'Lock not held', 'message': f"Edit mode is held by {active_lock['held_by']}"}), 403
+
+        return f(*args, **kwargs)
+    return decorated_function
+
+
 def load_assignments_data():
     """Load assignments"""
     if ASSIGNMENTS_FILE.exists():
@@ -441,6 +501,120 @@ def index():
 def old_index():
     """Old interface"""
     return render_template('index.html')
+
+
+# ============================================================================
+# Multi-User Sync API
+# ============================================================================
+
+@app.route('/api/lock/status', methods=['GET'])
+def api_lock_status():
+    """Get current lock status"""
+    session_id = request.args.get('session') or request.headers.get('X-Session-ID')
+
+    with lock_mutex:
+        # Check if lock has expired
+        if active_lock['expires'] and datetime.fromisoformat(active_lock['expires']) < datetime.now():
+            # Clear expired lock
+            active_lock['session_id'] = None
+            active_lock['held_by'] = None
+            active_lock['acquired_at'] = None
+            active_lock['expires'] = None
+
+        locked = active_lock['session_id'] is not None
+        is_holder = locked and active_lock['session_id'] == session_id
+
+        expires_in = 0
+        if locked and active_lock['expires']:
+            expires_in = max(0, (datetime.fromisoformat(active_lock['expires']) - datetime.now()).total_seconds())
+
+        return jsonify({
+            'locked': locked,
+            'held_by': active_lock['held_by'],
+            'expires_in': int(expires_in),
+            'is_holder': is_holder
+        })
+
+
+@app.route('/api/lock/acquire', methods=['POST'])
+def api_lock_acquire():
+    """Attempt to acquire the edit lock"""
+    data = request.json or {}
+    session_id = data.get('session_id')
+    held_by = data.get('held_by', 'Unknown')
+
+    if not session_id:
+        return jsonify({'ok': False, 'error': 'No session ID provided'}), 400
+
+    with lock_mutex:
+        # Check if lock is already held
+        if active_lock['session_id'] and active_lock['expires']:
+            # Check if it's expired
+            if datetime.fromisoformat(active_lock['expires']) > datetime.now():
+                # Lock is still valid
+                if active_lock['session_id'] == session_id:
+                    # Renew if same session
+                    active_lock['expires'] = (datetime.now() + timedelta(seconds=30)).isoformat()
+                    return jsonify({'ok': True, 'lock': active_lock})
+                else:
+                    return jsonify({
+                        'ok': False,
+                        'error': 'Lock held by another session',
+                        'held_by': active_lock['held_by']
+                    }), 409
+
+        # Lock is free or expired - acquire it
+        active_lock['session_id'] = session_id
+        active_lock['held_by'] = held_by
+        active_lock['acquired_at'] = datetime.now().isoformat()
+        active_lock['expires'] = (datetime.now() + timedelta(seconds=30)).isoformat()
+
+        return jsonify({'ok': True, 'lock': active_lock})
+
+
+@app.route('/api/lock/heartbeat', methods=['POST'])
+def api_lock_heartbeat():
+    """Renew lock expiry"""
+    data = request.json or {}
+    session_id = data.get('session_id')
+
+    if not session_id:
+        return jsonify({'ok': False, 'error': 'No session ID provided'}), 400
+
+    with lock_mutex:
+        if active_lock['session_id'] != session_id:
+            return jsonify({'ok': False, 'error': 'not_holder'}), 403
+
+        # Renew expiry
+        active_lock['expires'] = (datetime.now() + timedelta(seconds=30)).isoformat()
+        return jsonify({'ok': True})
+
+
+@app.route('/api/lock/release', methods=['POST'])
+def api_lock_release():
+    """Release the edit lock"""
+    data = request.json or {}
+    session_id = data.get('session_id')
+
+    if not session_id:
+        return jsonify({'ok': False, 'error': 'No session ID provided'}), 400
+
+    with lock_mutex:
+        # Only release if held by this session
+        if active_lock['session_id'] == session_id:
+            active_lock['session_id'] = None
+            active_lock['held_by'] = None
+            active_lock['acquired_at'] = None
+            active_lock['expires'] = None
+
+        return jsonify({'ok': True})
+
+
+@app.route('/api/sync-status', methods=['GET'])
+def api_sync_status():
+    """Get last modification timestamp for polling"""
+    with sync_mutex:
+        return jsonify(last_modified)
 
 
 @app.route('/api/onboarding/status', methods=['GET'])
@@ -1205,11 +1379,13 @@ if __name__ == '__main__':
         port = find_free_port()
         # Flush immediately so Electron can read it
         print(f'CLASSIFY_PORT:{port}', flush=True)
-        app.run(host='127.0.0.1', port=port, debug=False, use_reloader=False)
+        app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
     else:
         print("\n" + "="*60)
         print("Classify - Class Assignment Optimizer")
         print("="*60)
-        print("\nStarting server on http://localhost:5001")
+        print("\nStarting server on http://0.0.0.0:5001")
+        print("Access from this machine: http://localhost:5001")
+        print("Access from other machines: http://[this-machine-ip]:5001")
         print("\nPress Ctrl+C to stop\n")
-        app.run(debug=True, port=5001)
+        app.run(host='0.0.0.0', debug=True, port=5001)

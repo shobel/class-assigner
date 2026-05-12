@@ -16,6 +16,7 @@
     <link rel="stylesheet" href="/static/css/transition.css" />
     <link rel="stylesheet" href="/static/css/onboarding.css" />
     <link rel="stylesheet" href="/static/css/toggle.css" />
+    <link rel="stylesheet" href="/static/css/sync.css" />
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   </head>
   <body>
@@ -235,6 +236,10 @@
           <span class="cur" id="crumb-screen">...</span>
         </div>
         <div class="topbar-spacer"></div>
+        <div id="lock-indicator">
+          <span class="lock-dot free"></span>
+          <span class="lock-text">Loading...</span>
+        </div>
       </div>
 
       <!-- Main -->
@@ -972,11 +977,16 @@
       </div>
     </div>
 
+    <script src="/static/js/sync-client.js"></script>
     <script src="/static/js/homeroom-app.js?v=58"></script>
     <script src="/static/js/transition.js?v=44"></script>
     <script src="/static/js/onboarding.js"></script>
     <script>
       lucide.createIcons();
+      // Initialize sync after app loads
+      if (typeof initSync === 'function') {
+        initSync();
+      }
     </script>
   </body>
 </html>

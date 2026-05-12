@@ -1317,7 +1317,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -1335,7 +1335,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -1353,7 +1353,7 @@
         "reading": "m",
         "previous_teachers": "['Smith']",
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -1371,7 +1371,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -1389,7 +1389,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -1425,7 +1425,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 1,
         "has_friend_in_class": 1
       },
       {
@@ -1461,7 +1461,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -1497,7 +1497,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -1533,7 +1533,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 1
       },
       {
@@ -1551,7 +1551,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -1587,7 +1587,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -1623,7 +1623,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -1641,7 +1641,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -1659,7 +1659,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 1
       },
       {
@@ -1677,7 +1677,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -1695,7 +1695,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -1731,7 +1731,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -1749,7 +1749,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -1767,7 +1767,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 4,
         "has_friend_in_class": 1
       },
       {
@@ -1785,7 +1785,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -1803,7 +1803,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -1821,7 +1821,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -1839,7 +1839,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -1857,7 +1857,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -1893,7 +1893,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -1911,7 +1911,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -1929,7 +1929,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -1947,7 +1947,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -1965,7 +1965,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 3,
         "has_friend_in_class": 1
       },
       {
@@ -1983,7 +1983,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 2,
         "has_friend_in_class": 1
       },
       {
@@ -2001,7 +2001,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -2019,7 +2019,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -2037,7 +2037,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -2055,7 +2055,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 3,
         "has_friend_in_class": 1
       },
       {
@@ -2073,7 +2073,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -2091,7 +2091,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -2109,7 +2109,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -2127,7 +2127,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -2145,7 +2145,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -2199,7 +2199,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -2217,7 +2217,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -2253,7 +2253,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 3,
         "has_friend_in_class": 1
       },
       {
@@ -2289,7 +2289,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -2307,7 +2307,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -2325,7 +2325,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -2343,7 +2343,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -2379,7 +2379,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 5,
         "has_friend_in_class": 1
       },
       {
@@ -2397,7 +2397,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -2415,7 +2415,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -2433,7 +2433,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 3,
         "has_friend_in_class": 1
       },
       {
@@ -2451,7 +2451,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -2469,7 +2469,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -2523,7 +2523,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -2541,7 +2541,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -2559,7 +2559,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -2577,7 +2577,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -2595,7 +2595,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -2613,7 +2613,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -2631,7 +2631,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -2649,7 +2649,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 1
       },
       {
@@ -2667,7 +2667,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -2685,7 +2685,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -2703,7 +2703,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -2721,7 +2721,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -2739,7 +2739,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -2757,7 +2757,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 1,
         "has_friend_in_class": 1
       },
       {
@@ -2775,7 +2775,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 5,
         "has_friend_in_class": 1
       },
       {
@@ -2793,7 +2793,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 5,
         "has_friend_in_class": 1
       },
       {
@@ -2811,7 +2811,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 1,
         "has_friend_in_class": 1
       },
       {
@@ -2829,7 +2829,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -2847,7 +2847,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 5,
         "has_friend_in_class": 1
       },
       {
@@ -2865,7 +2865,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -2883,7 +2883,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -2901,7 +2901,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -2919,7 +2919,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       }
     ],
@@ -2958,7 +2958,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -2976,7 +2976,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -2994,7 +2994,7 @@
         "reading": "m",
         "previous_teachers": "['Smith']",
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -3012,7 +3012,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -3030,7 +3030,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -3066,7 +3066,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 1,
         "has_friend_in_class": 1
       },
       {
@@ -3102,7 +3102,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -3138,7 +3138,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -3174,7 +3174,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 1
       },
       {
@@ -3192,7 +3192,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -3228,7 +3228,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -3264,7 +3264,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -3282,7 +3282,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -3300,7 +3300,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 1
       },
       {
@@ -3318,7 +3318,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -3336,7 +3336,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -3372,7 +3372,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -3390,7 +3390,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -3408,7 +3408,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 4,
         "has_friend_in_class": 1
       },
       {
@@ -3426,7 +3426,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -3444,7 +3444,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -3462,7 +3462,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -3480,7 +3480,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -3498,7 +3498,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -3534,7 +3534,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -3552,7 +3552,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -3570,7 +3570,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -3588,7 +3588,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -3606,7 +3606,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 3,
         "has_friend_in_class": 1
       },
       {
@@ -3624,7 +3624,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 2,
         "has_friend_in_class": 1
       },
       {
@@ -3642,7 +3642,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -3660,7 +3660,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -3678,7 +3678,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -3696,7 +3696,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 3,
         "has_friend_in_class": 1
       },
       {
@@ -3714,7 +3714,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -3732,7 +3732,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -3750,7 +3750,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -3768,7 +3768,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -3786,7 +3786,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -3840,7 +3840,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -3858,7 +3858,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -3894,7 +3894,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 3,
         "has_friend_in_class": 1
       },
       {
@@ -3930,7 +3930,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -3948,7 +3948,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -3966,7 +3966,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -3984,7 +3984,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -4020,7 +4020,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 5,
         "has_friend_in_class": 1
       },
       {
@@ -4038,7 +4038,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -4056,7 +4056,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -4074,7 +4074,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 3,
         "has_friend_in_class": 1
       },
       {
@@ -4092,7 +4092,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -4110,7 +4110,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -4164,7 +4164,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -4182,7 +4182,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -4200,7 +4200,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 1,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -4218,7 +4218,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -4236,7 +4236,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -4254,7 +4254,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 4,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -4272,7 +4272,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -4290,7 +4290,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 1
       },
       {
@@ -4308,7 +4308,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       },
       {
@@ -4326,7 +4326,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -4344,7 +4344,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -4362,7 +4362,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 1,
         "has_friend_in_class": 0
       },
       {
@@ -4380,7 +4380,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -4398,7 +4398,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 1,
         "has_friend_in_class": 1
       },
       {
@@ -4416,7 +4416,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 5,
         "has_friend_in_class": 1
       },
       {
@@ -4434,7 +4434,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 5,
         "has_friend_in_class": 1
       },
       {
@@ -4452,7 +4452,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 1,
         "has_friend_in_class": 1
       },
       {
@@ -4470,7 +4470,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -4488,7 +4488,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 5,
         "has_friend_in_class": 1
       },
       {
@@ -4506,7 +4506,7 @@
         "reading": "l",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 5,
         "has_friend_in_class": 0
       },
       {
@@ -4524,7 +4524,7 @@
         "reading": "h",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 3,
+        "assigned_class": 2,
         "has_friend_in_class": 0
       },
       {
@@ -4542,7 +4542,7 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 5,
+        "assigned_class": 3,
         "has_friend_in_class": 0
       },
       {
@@ -4560,18 +4560,18 @@
         "reading": "m",
         "previous_teachers": null,
         "test": null,
-        "assigned_class": 2,
+        "assigned_class": 4,
         "has_friend_in_class": 0
       }
     ],
     "solver_status": "OPTIMAL",
-    "solver_elapsed": 2.25,
+    "solver_elapsed": 1.96,
     "solver_combinations": "6 octodecillion",
     "teachers": [
-      "Senigal",
       "Smith",
       "Rogers",
       "Olsen",
+      "Senigal",
       "Rutherford"
     ],
     "available_teachers": [
@@ -4580,7 +4580,133 @@
       "Rogers",
       "Senigal",
       "Rutherford"
-    ]
+    ],
+    "assignment_config": {
+      "properties": [
+        {
+          "display_name": "Gender",
+          "enabled": true,
+          "icon": "\u2640\ufe0f\u2642\ufe0f",
+          "name": "gender",
+          "type": "categorical",
+          "values": [
+            "g",
+            "b"
+          ],
+          "weight": 60
+        },
+        {
+          "display_name": "Behavior",
+          "enabled": true,
+          "icon": "\u26a0\ufe0f",
+          "name": "behavior",
+          "type": "categorical",
+          "values": [
+            "cooperative",
+            "neutral",
+            "disruptive"
+          ],
+          "weight": 100
+        },
+        {
+          "display_name": "Independence",
+          "enabled": true,
+          "icon": "\ud83c\udfaf",
+          "name": "independence",
+          "type": "categorical",
+          "values": [
+            "high",
+            "neutral",
+            "low"
+          ],
+          "weight": 60
+        },
+        {
+          "display_name": "IEP",
+          "enabled": true,
+          "icon": "\ud83d\udccb",
+          "name": "iep",
+          "type": "boolean",
+          "weight": 100
+        },
+        {
+          "display_name": "504 Plan",
+          "enabled": true,
+          "icon": "\ud83d\udcc4",
+          "name": "504",
+          "type": "boolean",
+          "weight": 100
+        },
+        {
+          "display_name": "ESL",
+          "enabled": true,
+          "icon": "\ud83c\udf10",
+          "name": "esl",
+          "type": "boolean",
+          "weight": 80
+        },
+        {
+          "display_name": "GATE",
+          "enabled": true,
+          "icon": "\u2b50",
+          "name": "gate",
+          "type": "boolean",
+          "weight": 60
+        },
+        {
+          "display_name": "Math Level",
+          "enabled": true,
+          "icon": "\ud83d\udcd0",
+          "name": "math",
+          "type": "categorical",
+          "values": [
+            "h",
+            "m",
+            "l"
+          ],
+          "weight": 60
+        },
+        {
+          "display_name": "Reading Level",
+          "enabled": true,
+          "icon": "\ud83d\udcda",
+          "name": "reading",
+          "type": "categorical",
+          "values": [
+            "h",
+            "m",
+            "l"
+          ],
+          "weight": 60
+        },
+        {
+          "display_name": "Friendships",
+          "enabled": true,
+          "icon": "\ud83e\udd1d",
+          "name": "friends",
+          "type": "relationship",
+          "weight": 20
+        },
+        {
+          "display_name": "Teacher uniqueness",
+          "enabled": true,
+          "icon": "\ud83d\udc69\u200d\ud83c\udfeb",
+          "name": "teacher_uniqueness",
+          "type": "hard_toggle"
+        },
+        {
+          "constraint": "soft",
+          "custom": true,
+          "display_name": "test",
+          "enabled": true,
+          "name": "test",
+          "type": "boolean",
+          "weight": 60
+        }
+      ],
+      "friend_weight": 20,
+      "timestamp": "2026-05-12T00:17:20.174535"
+    }
   },
   "1st Grade": {
     "students": [
