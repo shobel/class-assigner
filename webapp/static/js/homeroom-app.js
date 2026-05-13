@@ -29,10 +29,14 @@ let config = {
   school_year: "2025–26",
 };
 
+// Keep a backup of the global config
+let globalConfig = null;
+
 // Load config from server
 async function loadConfig() {
   const res = await fetch("/api/config");
   config = await res.json();
+  globalConfig = JSON.parse(JSON.stringify(config)); // Deep copy
 
   // Load available school years
   const yearsRes = await fetch("/api/school-years");
@@ -67,6 +71,38 @@ async function loadConfig() {
       config.school_name && config.school_name !== "School"
         ? config.school_name
         : "";
+}
+
+// Load and merge grade-specific custom properties into config
+async function loadGradeCustomProperties(gradeId) {
+  if (!globalConfig) {
+    globalConfig = JSON.parse(JSON.stringify(config));
+  }
+
+  // Reset to global config first
+  config = JSON.parse(JSON.stringify(globalConfig));
+
+  // Fetch grade data to get custom properties
+  const res = await fetch(`/api/grades/${gradeId}/students`);
+  const data = await res.json();
+
+  if (data.custom_rules?.properties) {
+    // Merge custom properties into config
+    const customProps = data.custom_rules.properties.filter(p => p.custom);
+
+    if (customProps.length > 0) {
+      // Add custom properties to config.properties
+      if (!config.properties) config.properties = [];
+
+      // Add custom properties that don't already exist
+      customProps.forEach(customProp => {
+        const exists = config.properties.find(p => p.name === customProp.name);
+        if (!exists) {
+          config.properties.push(customProp);
+        }
+      });
+    }
+  }
 }
 
 // Switch school year
@@ -321,6 +357,10 @@ async function selectGrade(gradeId) {
 
   // Proceed with grade switch
   currentGrade = grade;
+
+  // Load grade's custom properties and merge with global config
+  await loadGradeCustomProperties(gradeId);
+
   // Clear grade-specific globals so stale data from previous grade never bleeds through
   window.currentAssignments = null;
   window.currentStudents = null;
@@ -679,6 +719,7 @@ async function resetToGlobalRulesInline() {
 }
 window.resetToGlobalRulesInline = resetToGlobalRulesInline;
 
+// Custom property management
 // Show screen
 async function showScreen(screen) {
   // Guard: navigating away from the grade screen with unsaved changes
@@ -1505,7 +1546,7 @@ async function renderGradeSettingsScreen() {
   };
 
   const weightSlidersHtml = rulesProperties
-    .filter((p) => !p.custom && p.type !== "hard_toggle")
+    .filter((p) => p.type !== "hard_toggle")
     .map(renderWeightSlider)
     .join("");
 
@@ -1600,6 +1641,7 @@ async function renderGradeSettingsScreen() {
             }
           </div>
         </div>
+
       </div>
     </div>
   `;
@@ -3605,11 +3647,33 @@ function renderAssignmentResults(assignments, numClasses, assignData) {
                           )
                           .map((p) => {
                             const v = s[p.name];
-                            const label = `${p.display_name.slice(0, 3)} ${v === "h" ? "H" : "L"}`;
-                            const bg =
-                              v === "h"
-                                ? "var(--rose-soft)"
-                                : "var(--amber-soft, var(--bg-2))";
+                            const isHigh = v === "h" || v === "high";
+                            const isLow = v === "l" || v === "low";
+
+                            if (!isHigh && !isLow) return "";
+
+                            // Abbreviation mapping
+                            const abbrev = {
+                              behavior: "BEH",
+                              independence: "IND",
+                              math: "MATH",
+                              reading: "READ"
+                            };
+                            const label = abbrev[p.name] || p.display_name.slice(0, 4).toUpperCase();
+
+                            // Behavior: red=disruptive, green=cooperative
+                            // Independence: green=independent, red=dependent
+                            // Academic: green=high, red=low
+                            const invertedProps = ["behavior"];
+                            const isInverted = invertedProps.includes(p.name);
+
+                            let bg;
+                            if (isHigh) {
+                              bg = isInverted ? "var(--rose-soft)" : "var(--sage-soft)";
+                            } else {
+                              bg = isInverted ? "var(--sage-soft)" : "var(--rose-soft)";
+                            }
+
                             return `<span class="chip" style="font-size:8px;padding:1px 4px;background:${bg};">${label}</span>`;
                           })
                           .join("");
@@ -6083,16 +6147,37 @@ function showGradeInfoModal() {
     .join("");
 
   const catRows = catProps
-    .map(
-      (p) => `
+    .map((p) => {
+      const abbrev = {
+        behavior: "BEH",
+        independence: "IND",
+        math: "MATH",
+        reading: "READ"
+      };
+      const label = abbrev[p.name] || p.display_name.slice(0, 4).toUpperCase();
+
+      // Behavior is inverted: green=cooperative, red=disruptive
+      const invertedProps = ["behavior"];
+      const isInverted = invertedProps.includes(p.name);
+
+      const greenBg = "var(--sage-soft)";
+      const redBg = "var(--rose-soft)";
+
+      const highBg = isInverted ? redBg : greenBg;
+      const lowBg = isInverted ? greenBg : redBg;
+
+      const highDesc = p.name === "behavior" ? "Disruptive" : p.name === "independence" ? "Independent" : "High";
+      const lowDesc = p.name === "behavior" ? "Cooperative" : p.name === "independence" ? "Dependent" : "Low";
+
+      return `
     <tr>
       <td style="padding:5px 10px 5px 0;font-weight:500;white-space:nowrap;">
-        <span class="chip" style="font-size:8px;padding:1px 4px;background:var(--rose-soft);margin-right:3px;">${p.display_name.slice(0, 3)} H</span>
-        <span class="chip" style="font-size:8px;padding:1px 4px;background:var(--amber-soft, var(--bg-2));">${p.display_name.slice(0, 3)} L</span>
+        <span class="chip" style="font-size:8px;padding:1px 4px;background:${highBg};margin-right:3px;">${label}</span>
+        <span class="chip" style="font-size:8px;padding:1px 4px;background:${lowBg};">${label}</span>
       </td>
-      <td style="padding:5px 0;color:var(--ink-3);font-size:12px;">${p.display_name} — H = High, L = Low (medium not shown)</td>
-    </tr>`,
-    )
+      <td style="padding:5px 0;color:var(--ink-3);font-size:12px;">${p.display_name} — Green: ${lowDesc}, Red: ${highDesc} (medium not shown)</td>
+    </tr>`;
+    })
     .join("");
 
   const overlay = document.createElement("div");

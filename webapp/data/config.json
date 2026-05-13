@@ -129,6 +129,15 @@
       "name": "test",
       "type": "boolean",
       "weight": 60
+    },
+    {
+      "name": "test2",
+      "display_name": "test2",
+      "type": "boolean",
+      "constraint": "soft",
+      "weight": 60,
+      "enabled": true,
+      "custom": true
     }
   ],
   "school_name": "Cedar Wood Elementary",
