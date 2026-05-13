@@ -164,9 +164,90 @@ No Electron changes needed. The Electron window continues to load `http://localh
 
 ## Implementation order
 
-1. `--host=0.0.0.0` binding (trivial, unlocks multi-machine access immediately)
-2. `/api/sync-status` + client polling (read-only sync, no lock needed yet)
-3. Lock endpoints + server-side mutex
-4. Client lock acquisition on page load + heartbeat loop
-5. Read-only UI mode when locked by another session
-6. Session naming prompt + lock indicator in top bar
+1. ✅ `--host=0.0.0.0` binding (trivial, unlocks multi-machine access immediately)
+2. ✅ `/api/sync-status` + client polling (read-only sync, no lock needed yet)
+3. ✅ Lock endpoints + server-side mutex
+4. ✅ Client lock acquisition on page load + heartbeat loop
+5. ✅ Read-only UI mode when locked by another session
+6. ✅ Session naming prompt + lock indicator in top bar
+7. ✅ Backend lock enforcement on all mutating endpoints
+8. ✅ Frontend fetch wrapper to auto-include session ID
+
+## Implementation Status
+
+### ✅ Completed
+
+All features from the spec have been implemented:
+
+**Backend (`webapp/app.py`):**
+- Lock state management with threading mutex
+- Sync state tracking (timestamp, changed_by, scope)
+- Lock API endpoints: `/api/lock/{acquire,release,heartbeat,status}`
+- Sync API endpoint: `/api/sync-status`
+- Lock enforcement on all mutating POST/PUT/DELETE endpoints
+- `update_last_modified()` called after all data mutations
+- Server binds to `0.0.0.0:5001` for network access
+
+**Frontend:**
+- `sync-client.js` - Full sync client implementation
+  - Session identity (UUID + name in localStorage)
+  - Lock acquisition on page load
+  - Heartbeat every 10 seconds
+  - Poll for changes every 3 seconds
+  - Auto-release lock on page unload
+- `sync.css` - Read-only mode styles
+  - Body class `read-only-mode` disables all controls
+  - Visual banner indicating read-only status
+  - Lock indicator styles
+- Fetch wrapper automatically adds `X-Session-ID` header to all requests
+- Lock indicator in UI header
+- Session name prompt on first use (defaults to hostname)
+
+**Testing:**
+- `test_multi_user_sync.py` - Backend test suite
+  - Tests lock acquisition, enforcement, expiry, heartbeat
+  - All tests pass ✓
+- `webapp/static/test_frontend_sync.html` - Frontend test page
+  - Interactive testing of lock operations
+  - Verify fetch headers included
+  - Real-time lock status monitoring
+
+### How to Test
+
+**Quick Test (Single Machine):**
+1. Start server: `python webapp/app.py`
+2. Open `http://localhost:5001` in two browser windows
+3. First window should acquire edit mode automatically
+4. Second window should show "Read-only — [name] is editing"
+5. Make changes in first window → second window auto-refreshes
+6. Close first window → second window gets edit mode after 30s
+
+**Multi-Machine Test:**
+1. Find server IP: Run `ifconfig` or `ipconfig` on server machine
+2. Start server: `python webapp/app.py`
+3. Server shows: "Access from other machines: http://[ip]:5001"
+4. On another device on same network, open `http://[ip]:5001`
+5. Verify lock behavior as above
+
+**Backend Tests:**
+```bash
+python3 test_multi_user_sync.py
+# All tests should pass
+```
+
+### Files Changed/Added
+
+**Backend:**
+- Modified: `webapp/app.py` - Added lock state, sync endpoints, lock checks on mutations
+
+**Frontend:**
+- Added: `webapp/static/js/sync-client.js` - Sync client (complete implementation)
+- Added: `webapp/static/css/sync.css` - Read-only mode styles
+- Modified: `webapp/templates/homeroom.html` - Include sync scripts, add lock indicator
+
+**Tests:**
+- Added: `test_multi_user_sync.py` - Backend test suite
+- Added: `webapp/static/test_frontend_sync.html` - Frontend test page
+
+**Documentation:**
+- Modified: `MULTI_USER_SYNC.md` - This file (added implementation status)

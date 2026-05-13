@@ -10,14 +10,16 @@
   justify-content: center;
   z-index: 9999;
 }
-#activation-overlay.hidden { display: none; }
+#activation-overlay.hidden {
+  display: none;
+}
 #activation-box {
   width: 340px;
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 36px 32px 28px;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.08);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.08);
   text-align: center;
 }
 
@@ -93,7 +95,6 @@ body {
   min-height: 0;
   overflow-y: auto;
 }
-
 
 .topbar {
   grid-area: topbar;
@@ -508,8 +509,7 @@ body {
 
 /* Canvas */
 .canvas {
-  padding: 22px 28px 60px;
-  max-width: 1480px;
+  padding: 22px 50px 60px;
   margin: 0 auto;
 }
 

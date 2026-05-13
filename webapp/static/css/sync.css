@@ -1,36 +1,34 @@
 /* Multi-User Sync Styles */
 
-/* Read-only mode - disable most interactions */
-body.read-only-mode button:not(.read-only-allowed),
-body.read-only-mode input:not(.read-only-allowed),
-body.read-only-mode select:not(.read-only-allowed),
-body.read-only-mode textarea:not(.read-only-allowed),
+/* Read-only mode - disable all mutating controls */
+body.read-only-mode [data-mutates="true"],
+body.read-only-mode input[data-mutates="true"],
+body.read-only-mode button[data-mutates="true"],
+body.read-only-mode div[data-mutates="true"] {
+  pointer-events: none !important;
+  opacity: 0.4 !important;
+  cursor: not-allowed !important;
+  filter: grayscale(0.6) !important;
+}
+
+/* Drag-drop is always disabled in read-only */
 body.read-only-mode .draggable {
-  pointer-events: none;
-  opacity: 0.5;
+  pointer-events: none !important;
+  opacity: 0.5 !important;
   cursor: not-allowed !important;
 }
 
-/* Read-only banner */
-body.read-only-mode::before {
-  content: 'Read-only mode';
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 9999;
-  background: var(--amber-soft, #fef3c7);
-  color: var(--amber-ink, #92400e);
-  padding: 8px 16px;
-  text-align: center;
-  font-size: 13px;
-  font-weight: 600;
-  border-bottom: 1px solid var(--amber, #f59e0b);
+/* Form inputs - disable editing */
+body.read-only-mode textarea:not([data-readonly-ok]),
+body.read-only-mode input[type="text"]:not([data-readonly-ok]),
+body.read-only-mode input[type="number"]:not([data-readonly-ok]),
+body.read-only-mode select:not([data-readonly-ok]) {
+  pointer-events: none !important;
+  opacity: 0.5 !important;
+  background: var(--bg-1) !important;
 }
 
-body.read-only-mode .app {
-  padding-top: 40px;
-}
+/* No banner - read-only status shown in lock indicator only */
 
 /* Lock indicator */
 #lock-indicator {
@@ -56,7 +54,7 @@ body.read-only-mode .app {
 }
 
 .lock-dot.active {
-  background: var(--terra);
+  background: #22c55e;  /* Green for editing */
   animation: pulse 2s ease-in-out infinite;
 }
 

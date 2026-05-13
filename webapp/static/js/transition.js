@@ -149,10 +149,10 @@ function renderTransitionGrades() {
 
         <div
           class="transition-students"
-          ondragover="handleDragOver(event)"
-          ondrop="handleDrop(event, '${gradeName}')"
-          ondragenter="handleDragEnter(event)"
-          ondragleave="handleDragLeave(event)"
+          ondragover="handleTransitionDragOver(event)"
+          ondrop="handleTransitionDrop(event, '${gradeName}')"
+          ondragenter="handleTransitionDragEnter(event)"
+          ondragleave="handleTransitionDragLeave(event)"
         >
           ${students.length === 0 ? `
             <div class="empty-grade">No students yet${gradeName === 'Kindergarten' ? '. Import CSV' : ''}.</div>
@@ -174,8 +174,8 @@ function renderTransitionGrades() {
                 class="transition-student ${s.removed ? 'removed' : ''} ${!isVisible ? 'hidden' : ''}"
                 id="student-${gradeName}-${idx}"
                 draggable="${!s.removed ? 'true' : 'false'}"
-                ondragstart="handleDragStart(event, '${gradeName}', ${idx})"
-                ondragend="handleDragEnd(event)"
+                ondragstart="handleTransitionDragStart(event, '${gradeName}', ${idx})"
+                ondragend="handleTransitionDragEnd(event)"
               >
                 <div class="student-main">
                   <div class="drag-handle">
@@ -248,14 +248,14 @@ function clearTransitionSearch() {
 // Drag and drop handlers
 let draggedTransitionStudent = null;
 
-function handleDragStart(event, gradeName, idx) {
+function handleTransitionDragStart(event, gradeName, idx) {
   draggedTransitionStudent = { gradeName, idx };
   event.target.classList.add('dragging');
   event.dataTransfer.effectAllowed = 'move';
   event.dataTransfer.setData('text/html', event.target.innerHTML);
 }
 
-function handleDragEnd(event) {
+function handleTransitionDragEnd(event) {
   event.target.classList.remove('dragging');
   // Remove all drag-over classes
   document.querySelectorAll('.transition-students').forEach(el => {
@@ -263,7 +263,7 @@ function handleDragEnd(event) {
   });
 }
 
-function handleDragOver(event) {
+function handleTransitionDragOver(event) {
   if (event.preventDefault) {
     event.preventDefault();
   }
@@ -271,20 +271,20 @@ function handleDragOver(event) {
   return false;
 }
 
-function handleDragEnter(event) {
+function handleTransitionDragEnter(event) {
   if (event.currentTarget.classList.contains('transition-students')) {
     event.currentTarget.classList.add('drag-over');
   }
 }
 
-function handleDragLeave(event) {
+function handleTransitionDragLeave(event) {
   if (event.currentTarget.classList.contains('transition-students') &&
       !event.currentTarget.contains(event.relatedTarget)) {
     event.currentTarget.classList.remove('drag-over');
   }
 }
 
-function handleDrop(event, toGrade) {
+function handleTransitionDrop(event, toGrade) {
   if (event.stopPropagation) {
     event.stopPropagation();
   }
@@ -440,9 +440,9 @@ window.restoreStudent = restoreStudent;
 window.importKindergartenCSV = importKindergartenCSV;
 window.searchTransitionStudents = searchTransitionStudents;
 window.clearTransitionSearch = clearTransitionSearch;
-window.handleDragStart = handleDragStart;
-window.handleDragEnd = handleDragEnd;
-window.handleDragOver = handleDragOver;
-window.handleDragEnter = handleDragEnter;
-window.handleDragLeave = handleDragLeave;
-window.handleDrop = handleDrop;
+window.handleTransitionDragStart = handleTransitionDragStart;
+window.handleTransitionDragEnd = handleTransitionDragEnd;
+window.handleTransitionDragOver = handleTransitionDragOver;
+window.handleTransitionDragEnter = handleTransitionDragEnter;
+window.handleTransitionDragLeave = handleTransitionDragLeave;
+window.handleTransitionDrop = handleTransitionDrop;

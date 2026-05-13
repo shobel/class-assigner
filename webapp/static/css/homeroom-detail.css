@@ -200,10 +200,7 @@
   cursor: pointer;
 }
 
-.student-row > div:nth-child(3),
-.student-row > div:nth-child(4),
-.student-row > div:nth-child(5),
-.student-row > div:nth-child(7) {
+.student-row > .student-flag-chips {
   text-align: center;
   justify-content: center;
 }

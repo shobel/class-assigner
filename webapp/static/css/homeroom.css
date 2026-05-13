@@ -41,8 +41,7 @@ body {
 }
 
 .canvas {
-  padding: 22px 28px 60px;
-  max-width: 1480px;
+  padding: 22px 50px 60px;
   margin: 0 auto;
 }
 
@@ -410,7 +409,9 @@ body {
 
 /* Drag and drop styles */
 .draggable-student {
-  transition: opacity 0.2s, transform 0.15s;
+  transition:
+    opacity 0.2s,
+    transform 0.15s;
 }
 
 .draggable-student:hover {
@@ -422,7 +423,9 @@ body {
 }
 
 .class-drop-zone {
-  transition: background 0.2s, border-color 0.2s;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
 }
 
 .class-drop-zone.drag-over {
