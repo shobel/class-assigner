@@ -413,6 +413,11 @@ body {
   font-weight: 500;
 }
 
+#crumb-grade[style*="cursor: pointer"]:hover {
+  color: var(--terra);
+  text-decoration: underline;
+}
+
 .topbar-spacer {
   flex: 1;
 }

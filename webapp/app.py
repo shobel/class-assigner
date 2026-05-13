@@ -105,13 +105,8 @@ SCHOOL_YEARS_DIR.mkdir(exist_ok=True)
 # Multi-User Sync State
 # ============================================================================
 
-# Active lock state
-active_lock = {
-    'session_id': None,
-    'held_by': None,
-    'acquired_at': None,
-    'expires': None,
-}
+# Per-grade lock state: {grade_id: {session_id, held_by, acquired_at, expires}}
+active_locks = {}
 lock_mutex = threading.Lock()
 
 # Last modification timestamp for sync
@@ -509,103 +504,124 @@ def old_index():
 
 @app.route('/api/lock/status', methods=['GET'])
 def api_lock_status():
-    """Get current lock status"""
+    """Get current lock status for a grade"""
     session_id = request.args.get('session') or request.headers.get('X-Session-ID')
+    grade_id = request.args.get('grade_id')
+
+    if not grade_id:
+        return jsonify({'locked': False, 'held_by': None, 'expires_in': 0, 'is_holder': False})
 
     with lock_mutex:
-        # Check if lock has expired
-        if active_lock['expires'] and datetime.fromisoformat(active_lock['expires']) < datetime.now():
-            # Clear expired lock
-            active_lock['session_id'] = None
-            active_lock['held_by'] = None
-            active_lock['acquired_at'] = None
-            active_lock['expires'] = None
+        lock = active_locks.get(grade_id, {})
 
-        locked = active_lock['session_id'] is not None
-        is_holder = locked and active_lock['session_id'] == session_id
+        # Check if lock has expired
+        if lock.get('expires') and datetime.fromisoformat(lock['expires']) < datetime.now():
+            active_locks[grade_id] = {}
+            lock = {}
+
+        locked = lock.get('session_id') is not None
+        is_holder = locked and lock.get('session_id') == session_id
 
         expires_in = 0
-        if locked and active_lock['expires']:
-            expires_in = max(0, (datetime.fromisoformat(active_lock['expires']) - datetime.now()).total_seconds())
+        if locked and lock.get('expires'):
+            expires_in = max(0, (datetime.fromisoformat(lock['expires']) - datetime.now()).total_seconds())
 
         return jsonify({
             'locked': locked,
-            'held_by': active_lock['held_by'],
+            'held_by': lock.get('held_by'),
             'expires_in': int(expires_in),
-            'is_holder': is_holder
+            'is_holder': is_holder,
+            'grade_id': grade_id
         })
 
 
 @app.route('/api/lock/acquire', methods=['POST'])
 def api_lock_acquire():
-    """Attempt to acquire the edit lock"""
+    """Attempt to acquire the edit lock for a grade"""
     data = request.json or {}
     session_id = data.get('session_id')
     held_by = data.get('held_by', 'Unknown')
+    grade_id = data.get('grade_id')
 
     if not session_id:
         return jsonify({'ok': False, 'error': 'No session ID provided'}), 400
+    if not grade_id:
+        return jsonify({'ok': False, 'error': 'No grade_id provided'}), 400
 
     with lock_mutex:
+        lock = active_locks.get(grade_id, {})
+
         # Check if lock is already held
-        if active_lock['session_id'] and active_lock['expires']:
-            # Check if it's expired
-            if datetime.fromisoformat(active_lock['expires']) > datetime.now():
+        if lock.get('session_id') and lock.get('expires'):
+            if datetime.fromisoformat(lock['expires']) > datetime.now():
                 # Lock is still valid
-                if active_lock['session_id'] == session_id:
+                if lock['session_id'] == session_id:
                     # Renew if same session
-                    active_lock['expires'] = (datetime.now() + timedelta(seconds=30)).isoformat()
-                    return jsonify({'ok': True, 'lock': active_lock})
+                    lock['expires'] = (datetime.now() + timedelta(seconds=30)).isoformat()
+                    active_locks[grade_id] = lock
+                    return jsonify({'ok': True, 'lock': lock})
                 else:
                     return jsonify({
                         'ok': False,
                         'error': 'Lock held by another session',
-                        'held_by': active_lock['held_by']
+                        'held_by': lock['held_by']
                     }), 409
 
         # Lock is free or expired - acquire it
-        active_lock['session_id'] = session_id
-        active_lock['held_by'] = held_by
-        active_lock['acquired_at'] = datetime.now().isoformat()
-        active_lock['expires'] = (datetime.now() + timedelta(seconds=30)).isoformat()
-
-        return jsonify({'ok': True, 'lock': active_lock})
+        new_lock = {
+            'session_id': session_id,
+            'held_by': held_by,
+            'acquired_at': datetime.now().isoformat(),
+            'expires': (datetime.now() + timedelta(seconds=30)).isoformat()
+        }
+        active_locks[grade_id] = new_lock
+        return jsonify({'ok': True, 'lock': new_lock})
 
 
 @app.route('/api/lock/heartbeat', methods=['POST'])
 def api_lock_heartbeat():
-    """Renew lock expiry"""
+    """Renew lock expiry for a grade"""
     data = request.json or {}
     session_id = data.get('session_id')
+    grade_id = data.get('grade_id')
 
     if not session_id:
         return jsonify({'ok': False, 'error': 'No session ID provided'}), 400
+    if not grade_id:
+        return jsonify({'ok': False, 'error': 'No grade_id provided'}), 400
 
     with lock_mutex:
-        if active_lock['session_id'] != session_id:
+        lock = active_locks.get(grade_id, {})
+        if lock.get('session_id') != session_id:
             return jsonify({'ok': False, 'error': 'not_holder'}), 403
 
         # Renew expiry
-        active_lock['expires'] = (datetime.now() + timedelta(seconds=30)).isoformat()
+        lock['expires'] = (datetime.now() + timedelta(seconds=30)).isoformat()
+        active_locks[grade_id] = lock
         return jsonify({'ok': True})
 
 
 @app.route('/api/lock/release', methods=['POST'])
 def api_lock_release():
-    """Release the edit lock"""
+    """Release the edit lock for a grade (or all grades)"""
     data = request.json or {}
     session_id = data.get('session_id')
+    grade_id = data.get('grade_id')
 
     if not session_id:
         return jsonify({'ok': False, 'error': 'No session ID provided'}), 400
 
     with lock_mutex:
-        # Only release if held by this session
-        if active_lock['session_id'] == session_id:
-            active_lock['session_id'] = None
-            active_lock['held_by'] = None
-            active_lock['acquired_at'] = None
-            active_lock['expires'] = None
+        if grade_id:
+            # Release specific grade
+            lock = active_locks.get(grade_id, {})
+            if lock.get('session_id') == session_id:
+                active_locks[grade_id] = {}
+        else:
+            # Release all locks for this session
+            for gid in list(active_locks.keys()):
+                if active_locks[gid].get('session_id') == session_id:
+                    active_locks[gid] = {}
 
         return jsonify({'ok': True})
 
@@ -867,6 +883,7 @@ def api_grade_students(grade_id):
         'enforce_class_size': grade_data.get('enforce_class_size', False),
         'teachers': grade_data.get('teachers', []),
         'available_teachers': grade_data.get('available_teachers', []),
+        'custom_rules': grade_data.get('custom_rules'),
     })
 
 @app.route('/api/grades/<grade_id>/assignments', methods=['GET', 'POST'])
@@ -938,6 +955,37 @@ def api_revert_assignments(grade_id):
     save_school_year_data(active_year, students_data)
 
     return jsonify({'status': 'success', 'assignments': solver_baseline})
+
+
+@app.route('/api/grades/<grade_id>/custom-rules', methods=['POST', 'DELETE'])
+def api_grade_custom_rules(grade_id):
+    """Save or delete custom rules for a grade"""
+    config = load_config()
+    active_year = config.get('active_school_year', config['school_year'])
+    students_data = load_school_year_data(active_year)
+
+    grade_name = None
+    for name in students_data.keys():
+        if name.lower().replace(' ', '_') == grade_id:
+            grade_name = name
+            break
+
+    if not grade_name:
+        return jsonify({'error': 'Grade not found'}), 404
+
+    if request.method == 'POST':
+        # Save custom rules
+        data = request.json or {}
+        students_data[grade_name]['custom_rules'] = data.get('custom_rules', {})
+        save_school_year_data(active_year, students_data)
+        return jsonify({'status': 'success'})
+
+    elif request.method == 'DELETE':
+        # Remove custom rules (revert to global)
+        if 'custom_rules' in students_data[grade_name]:
+            del students_data[grade_name]['custom_rules']
+        save_school_year_data(active_year, students_data)
+        return jsonify({'status': 'success'})
 
 
 @app.route('/api/grades/<grade_id>/class-names', methods=['POST'])
@@ -1238,8 +1286,13 @@ def api_assign(grade_id):
         if len(students) == 0:
             return jsonify({"error": "No students to assign"}), 400
 
-        # Get properties config
-        properties_config = config.get('properties', [])
+        # Get properties config - use grade-specific custom rules if available
+        if grade_data.get('custom_rules') and grade_data['custom_rules'].get('properties'):
+            properties_config = grade_data['custom_rules']['properties']
+            print(f"Using custom rules for {grade_name}")
+        else:
+            properties_config = config.get('properties', [])
+            print(f"Using global rules for {grade_name}")
 
         # Get teacher uniqueness setting
         teacher_uniqueness_prop = next((p for p in properties_config if p.get('name') == 'teacher_uniqueness'), None)

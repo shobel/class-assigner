@@ -297,8 +297,28 @@ function renderGradeNav() {
 }
 
 // Select grade
-function selectGrade(gradeId) {
-  currentGrade = grades.find((g) => g.id === gradeId);
+async function selectGrade(gradeId) {
+  const grade = grades.find((g) => g.id === gradeId);
+  if (!grade) return;
+
+  // Check lock status BEFORE switching
+  if (typeof tryAcquireLock === 'function') {
+    const lockResponse = await fetch(`/api/lock/status?session=${sessionId}&grade_id=${gradeId}`);
+    const lockStatus = await lockResponse.json();
+
+    // If locked by someone else, show modal and wait for decision
+    if (lockStatus.locked && !lockStatus.is_holder) {
+      const decision = await showReadOnlyModal(grade.name, lockStatus.held_by);
+      if (decision === 'cancel') {
+        // User canceled - don't switch grades at all
+        return;
+      }
+      // User chose to view read-only - continue with switch
+    }
+  }
+
+  // Proceed with grade switch
+  currentGrade = grade;
   // Clear grade-specific globals so stale data from previous grade never bleeds through
   window.currentAssignments = null;
   window.currentStudents = null;
@@ -350,11 +370,11 @@ function renderTeacherBar(teachers) {
           return `<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px 4px 6px;background:var(--bg-2);border:1px solid var(--line);border-radius:20px;font-size:12px;font-weight:500;">
           <span class="avatar t" style="width:20px;height:20px;font-size:8px;flex-shrink:0;">${initials}</span>
           ${t}
-          <button onclick="removeGradeTeacher('${t.replace(/'/g, "\\'")}')" style="background:none;border:none;cursor:pointer;color:var(--ink-4);padding:0;font-size:13px;line-height:1;margin-left:2px;" title="Remove">×</button>
+          <button data-mutates="true" onclick="removeGradeTeacher('${t.replace(/'/g, "\\'")}')" style="background:none;border:none;cursor:pointer;color:var(--ink-4);padding:0;font-size:13px;line-height:1;margin-left:2px;" title="Remove">×</button>
         </span>`;
         })
         .join("")}
-      <button class="btn ghost sm" id="addTeacherBtn" onclick="startAddGradeTeacher(this)">+ Add teacher</button>
+      <button class="btn ghost sm" id="addTeacherBtn" onclick="startAddGradeTeacher(this)" data-mutates="true">+ Add teacher</button>
     </div>
   `;
 }
@@ -423,81 +443,14 @@ window.startAddGradeTeacher = startAddGradeTeacher;
 window.addGradeTeacher = addGradeTeacher;
 window.removeGradeTeacher = removeGradeTeacher;
 
-async function showGradeSettings(gradeId) {
-  const grade = grades.find((g) => g.id === gradeId);
-  if (!grade) return;
-
-  // Fetch full grade data
-  const res = await fetch(`/api/grades/${gradeId}/students`);
-  const data = await res.json();
-
-  const numStudents = (data.students || []).length;
-  const numClasses = data.num_classes || 5;
-  const avg = numStudents / numClasses;
-  const defaultMin = Math.max(1, Math.floor(avg) - 2);
-  const defaultMax = Math.ceil(avg) + 2;
-
-  currentGradeSettings = {
-    gradeId: gradeId,
-    num_classes: numClasses,
-    num_students: numStudents,
-    min_students: data.min_students ?? defaultMin,
-    max_students: data.max_students ?? defaultMax,
-    enforce_class_size: data.enforce_class_size === true,
-  };
-
-  document.getElementById("gradeSettingsTitle").textContent =
-    `${grade.name} Settings`;
-  document.getElementById("gradeSettingsBody").innerHTML = `
-    <div style="display: flex; flex-direction: column; gap: 20px;">
-      <div>
-        <label style="display: block; font-weight: 500; margin-bottom: 8px;">Number of classes</label>
-        <input type="number" id="numClasses" value="${currentGradeSettings.num_classes}" min="1" max="10"
-          style="width: 100px; padding: 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit;" oninput="checkClassSizeFeasibility()">
-        <p style="font-size: 12px; color: var(--ink-3); margin-top: 4px;">How many classes to create for this grade</p>
-      </div>
-
-      <div>
-        <label style="display: block; font-weight: 500; margin-bottom: 8px;">Class size constraints</label>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
-          <div>
-            <label style="display: block; font-size: 12px; color: var(--ink-3); margin-bottom: 4px;">Minimum per class</label>
-            <input type="number" id="minStudents" value="${currentGradeSettings.min_students}" min="1" max="50"
-              style="width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit;" oninput="checkClassSizeFeasibility()">
-          </div>
-          <div>
-            <label style="display: block; font-size: 12px; color: var(--ink-3); margin-bottom: 4px;">Maximum per class</label>
-            <input type="number" id="maxStudents" value="${currentGradeSettings.max_students}" min="1" max="50"
-              style="width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 6px; font: inherit;" oninput="checkClassSizeFeasibility()">
-          </div>
-        </div>
-
-        <div style="margin-top: 12px; padding: 12px; background: var(--bg-2); border-radius: 6px;">
-          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
-            <input type="checkbox" id="enforceClassSize" ${currentGradeSettings.enforce_class_size ? "checked" : ""}
-              style="width: 16px; height: 16px; cursor: pointer;" onchange="checkClassSizeFeasibility()">
-            <span style="font-size: 12px; font-weight: 500;">Enforce as hard constraint</span>
-          </label>
-          <p style="font-size: 11px; color: var(--ink-3); margin: 6px 0 0 24px; line-height: 1.4;">
-            <strong>Checked:</strong> Optimizer fails if limits can't be met<br>
-            <strong>Unchecked:</strong> Optimizer tries its best but allows flexibility
-          </p>
-          <div id="classSizeFeasibilityWarning" style="display:none; margin-top:8px; padding:8px 10px; background:var(--rose-soft); border-radius:5px; font-size:11px; color:var(--terra-ink); line-height:1.5;"></div>
-        </div>
-      </div>
-
-    </div>
-  `;
-
-  document.getElementById("gradeSettingsModal").classList.add("open");
-}
+// Obsolete modal functions removed - grade settings now a full screen view
 
 function checkClassSizeFeasibility() {
   const enforced = document.getElementById("enforceClassSize")?.checked;
   const min = parseInt(document.getElementById("minStudents")?.value) || 0;
   const max = parseInt(document.getElementById("maxStudents")?.value) || 0;
   const classes = parseInt(document.getElementById("numClasses")?.value) || 0;
-  const students = currentGradeSettings?.num_students || 0;
+  const students = window.currentGradeSettings?.num_students || 0;
   const warning = document.getElementById("classSizeFeasibilityWarning");
   if (!warning) return;
 
@@ -518,11 +471,6 @@ function checkClassSizeFeasibility() {
   }
 }
 window.checkClassSizeFeasibility = checkClassSizeFeasibility;
-
-function closeGradeSettings() {
-  document.getElementById("gradeSettingsModal").classList.remove("open");
-  currentGradeSettings = null;
-}
 
 async function saveGradeSettings() {
   if (!currentGradeSettings) return;
@@ -590,6 +538,128 @@ async function saveGradeSettings() {
   }
 }
 
+async function autoSaveGradeSettings() {
+  if (!window.currentGradeSettings) return;
+
+  const numClasses = parseInt(document.getElementById("numClasses").value);
+  const minStudents = parseInt(document.getElementById("minStudents").value);
+  const maxStudents = parseInt(document.getElementById("maxStudents").value);
+  const enforceClassSize = document.getElementById("enforceClassSize").checked;
+
+  if (minStudents > maxStudents) {
+    // Don't save invalid state, but don't show error on every keystroke
+    return;
+  }
+
+  // Save to server silently in background
+  try {
+    const res = await fetch(`/api/grades/${window.currentGradeSettings.gradeId}/settings`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        num_classes: numClasses,
+        min_students: minStudents,
+        max_students: maxStudents,
+        enforce_class_size: enforceClassSize,
+      }),
+    });
+
+    if (res.ok) {
+      await loadGrades(); // Update sidebar counts
+    }
+  } catch (err) {
+    console.error("Error auto-saving settings:", err);
+  }
+}
+window.autoSaveGradeSettings = autoSaveGradeSettings;
+
+// Grade-specific weight/property handlers
+async function toggleGradeProperty(propertyName, enabled) {
+  if (!window.currentGradeSettings) return;
+
+  // Get or create custom rules
+  if (!window.currentGradeSettings.custom_rules) {
+    window.currentGradeSettings.custom_rules = {
+      properties: JSON.parse(JSON.stringify(config.properties))
+    };
+  }
+
+  const prop = window.currentGradeSettings.custom_rules.properties.find(p => p.name === propertyName);
+  if (prop) {
+    prop.enabled = enabled;
+  }
+
+  // Save to server - don't re-render, just save in background
+  fetch(`/api/grades/${window.currentGradeSettings.gradeId}/custom-rules`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ custom_rules: window.currentGradeSettings.custom_rules }),
+  });
+}
+window.toggleGradeProperty = toggleGradeProperty;
+
+async function updateGradeWeight(propertyName, value) {
+  if (!window.currentGradeSettings) return;
+
+  const weight = parseInt(value) * 20;
+
+  // Get or create custom rules
+  if (!window.currentGradeSettings.custom_rules) {
+    console.log('Creating custom rules from global config');
+    window.currentGradeSettings.custom_rules = {
+      properties: JSON.parse(JSON.stringify(config.properties))
+    };
+  }
+
+  const prop = window.currentGradeSettings.custom_rules.properties.find(p => p.name === propertyName);
+  if (prop) {
+    prop.weight = weight;
+    console.log(`Updated ${propertyName} weight to ${weight}`);
+  } else {
+    console.error(`Property ${propertyName} not found in custom rules`);
+  }
+
+  // Save to server - don't re-render, just save in background
+  console.log('Saving custom rules:', window.currentGradeSettings.custom_rules);
+  const res = await fetch(`/api/grades/${window.currentGradeSettings.gradeId}/custom-rules`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ custom_rules: window.currentGradeSettings.custom_rules }),
+  });
+
+  console.log('Save response:', res.ok ? 'success' : 'failed', res.status);
+}
+window.updateGradeWeight = updateGradeWeight;
+
+async function resetToGlobalRulesInline() {
+  if (!window.currentGradeSettings) return;
+
+  const confirmed = await showConfirm(
+    'Reset to global rules? This will discard all custom rules for this grade and revert to the default rules & weights.',
+    { confirmLabel: 'Reset to Global', destructive: true }
+  );
+
+  if (!confirmed) return;
+
+  try {
+    const res = await fetch(`/api/grades/${window.currentGradeSettings.gradeId}/custom-rules`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' }
+    });
+
+    if (res.ok) {
+      window.currentGradeSettings.custom_rules = null;
+      showNotice('Reset to global rules');
+      showScreen('grade-settings'); // Re-render
+    } else {
+      showNotice('Failed to reset rules', 'error');
+    }
+  } catch (e) {
+    showNotice('Failed to reset rules', 'error');
+  }
+}
+window.resetToGlobalRulesInline = resetToGlobalRulesInline;
+
 // Show screen
 async function showScreen(screen) {
   // Guard: navigating away from the grade screen with unsaved changes
@@ -632,6 +702,39 @@ async function showScreen(screen) {
 
   currentScreen = screen;
 
+  // Grade screens: students, results, grade-settings
+  const isGradeScreen = ['students', 'results', 'grade-settings'].includes(screen);
+
+  // Per-grade lock: Try to acquire lock when opening a grade
+  if (isGradeScreen && currentGrade && typeof tryAcquireLock === 'function') {
+    const newGradeId = currentGrade.id;
+
+    // Release previous grade lock if switching grades
+    if (window.currentGradeId && window.currentGradeId !== newGradeId && typeof releaseLock === 'function') {
+      await releaseLock(window.currentGradeId);
+    }
+
+    window.currentGradeId = newGradeId;
+
+    // Only try to acquire lock on students screen (entry point)
+    if (screen === 'students') {
+      const acquired = await tryAcquireLock(newGradeId);
+      // Lock acquisition result is handled - modal was already shown in selectGrade if needed
+    }
+    // For results and grade-settings, lock is already held from students screen
+  } else {
+    // Not on a grade screen - release current lock and clear selection
+    if (window.currentGradeId && typeof releaseLock === 'function') {
+      await releaseLock(window.currentGradeId);
+      window.currentGradeId = null;
+    }
+    // Clear currentGrade so no grade appears selected
+    if (!isGradeScreen) {
+      currentGrade = null;
+      renderGradeNav();
+    }
+  }
+
   // Update nav active state
   document
     .querySelectorAll(".nav-item")
@@ -644,8 +747,18 @@ async function showScreen(screen) {
     document.getElementById("nav-school-config")?.classList.add("active");
 
   // Update breadcrumbs
-  document.getElementById("crumb-grade").textContent =
-    currentGrade?.name || "...";
+  const crumbGrade = document.getElementById("crumb-grade");
+  crumbGrade.textContent = currentGrade?.name || "...";
+
+  // Make grade breadcrumb clickable when we have a current grade
+  if (currentGrade) {
+    crumbGrade.style.cursor = "pointer";
+    crumbGrade.onclick = () => showScreen('students');
+  } else {
+    crumbGrade.style.cursor = "default";
+    crumbGrade.onclick = null;
+  }
+
   const screenNames = {
     welcome: "Welcome",
     config: "Configuration",
@@ -653,6 +766,7 @@ async function showScreen(screen) {
     import: "Import students",
     students: "Roster",
     results: "Class assignments",
+    "grade-settings": "Settings",
   };
   document.getElementById("crumb-screen").textContent =
     screenNames[screen] || screen;
@@ -670,6 +784,8 @@ async function showScreen(screen) {
     content = renderSchoolConfigScreen();
   } else if (screen === "students" || screen === "results") {
     content = await renderStudentsScreen();
+  } else if (screen === "grade-settings") {
+    content = await renderGradeSettingsScreen();
   }
 
   // Update content but preserve detail panel
@@ -795,7 +911,7 @@ function renderSchoolConfigScreen() {
             <div style="display:flex;align-items:center;gap:10px">
               <input type="text" id="schoolNameInput" value="${config.school_name || ""}" placeholder="e.g. Lincoln Elementary"
                 style="flex:1;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font:inherit;font-size:13px;background:var(--panel)">
-              <button class="btn sm ghost" onclick="saveSchoolName()">Save</button>
+              <button class="btn sm ghost" onclick="saveSchoolName()" data-mutates="true">Save</button>
             </div>
           </div>
         </div>
@@ -1015,7 +1131,7 @@ function openAddCustomAttributeModal() {
 
         <div>
           <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">Type</label>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg active" data-field="custom-type" data-value="boolean">Yes / No</button>
             <button class="seg" data-field="custom-type" data-value="categorical">Multiple values</button>
           </div>
@@ -1029,7 +1145,7 @@ function openAddCustomAttributeModal() {
 
         <div>
           <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">Constraint</label>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg active" data-field="custom-constraint" data-value="soft">Soft — balance by importance</button>
             <button class="seg" data-field="custom-constraint" data-value="hard">Hard — always enforced</button>
           </div>
@@ -1137,11 +1253,14 @@ async function submitAddCustomAttribute() {
   }
 
   config.properties.push(newProp);
+
+  // Save to server
   await fetch("/api/config", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(config),
   });
+
   overlay.remove();
   showScreen("config");
   showNotice(`"${displayName}" attribute added.`);
@@ -1154,11 +1273,14 @@ async function deleteCustomAttribute(name) {
   const ok = await showConfirm(`Remove "${prop.display_name}" attribute?`);
   if (!ok) return;
   config.properties = config.properties.filter((p) => p.name !== name);
+
+  // Save to server
   await fetch("/api/config", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(config),
   });
+
   showScreen("config");
   showNotice(`"${prop.display_name}" removed.`);
 }
@@ -1168,11 +1290,14 @@ async function toggleCustomConstraint(name) {
   const prop = config.properties.find((p) => p.name === name);
   if (!prop) return;
   prop.constraint = prop.constraint === "hard" ? "soft" : "hard";
+
+  // Save to server
   await fetch("/api/config", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(config),
   });
+
   showScreen("config");
 }
 window.toggleCustomConstraint = toggleCustomConstraint;
@@ -1282,6 +1407,167 @@ async function toggleProperty(propertyName, enabled) {
   showScreen("config");
 }
 
+// Grade Settings Screen
+async function renderGradeSettingsScreen() {
+  if (!currentGrade) {
+    return '<div class="canvas"><p>No grade selected</p></div>';
+  }
+
+  // Fetch full grade data
+  const res = await fetch(`/api/grades/${currentGrade.id}/students`);
+  const data = await res.json();
+
+  console.log('Fetched grade data, custom_rules:', data.custom_rules);
+
+  const numStudents = (data.students || []).length;
+  const numClasses = data.num_classes || 5;
+  const avg = numStudents / numClasses;
+  const defaultMin = Math.max(1, Math.floor(avg) - 2);
+  const defaultMax = Math.ceil(avg) + 2;
+
+  const hasCustomRules = data.custom_rules && data.custom_rules.properties;
+
+  // Store current settings globally for save operations
+  window.currentGradeSettings = {
+    gradeId: currentGrade.id,
+    num_classes: numClasses,
+    num_students: numStudents,
+    min_students: data.min_students ?? defaultMin,
+    max_students: data.max_students ?? defaultMax,
+    enforce_class_size: data.enforce_class_size === true,
+    custom_rules: data.custom_rules || null,
+  };
+
+  // Prepare rules to display (custom or global)
+  const rulesProperties = hasCustomRules ? data.custom_rules.properties : config.properties;
+
+  // Render weight sliders inline
+  const renderWeightSlider = (prop) => {
+    const weight = Math.round(prop.weight / 20);
+    const enabled = prop.enabled !== false;
+    const weightLabels = ["", "Mild", "Medium", "High", "Critical"];
+
+    return `
+      <div style="padding: 14px 0; border-bottom: 1px solid var(--line-soft); ${!enabled ? 'opacity: 0.5;' : ''}">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 10px;">
+          <label class="toggle">
+            <input type="checkbox" ${enabled ? 'checked' : ''} onchange="toggleGradeProperty('${prop.name}', this.checked)" data-mutates="true">
+            <span class="toggle-slider"></span>
+          </label>
+          <div style="flex: 1;">
+            <div style="font-weight: 500; font-size: 13px; color: var(--terra);">${prop.display_name}</div>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; padding-left: 52px;">
+          <input type="range" min="1" max="5" step="1" class="slider" value="${weight}"
+            onchange="updateGradeWeight('${prop.name}', this.value)" ${!enabled ? 'disabled' : ''} style="flex: 1;" data-mutates="true">
+          <div style="font-family: var(--t-mono); font-size: 10px; text-transform: uppercase; color: var(--terra); width: 60px; text-align: right;">
+            ${weightLabels[weight] || "Mild"}
+          </div>
+        </div>
+      </div>
+    `;
+  };
+
+  const weightSlidersHtml = rulesProperties
+    .filter(p => !p.custom && p.type !== 'hard_toggle')
+    .map(renderWeightSlider)
+    .join('');
+
+  return `
+    <div class="canvas">
+      <!-- Page Title with Back Button -->
+      <div class="page-title">
+        <div style="display: flex; align-items: center; gap: 12px;">
+          <button onclick="showScreen('students')"
+            style="width:32px;height:32px;border-radius:6px;border:1px solid var(--line);background:transparent;cursor:pointer;color:var(--ink-3);display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.15s;"
+            onmouseover="this.style.borderColor='var(--ink)';this.style.color='var(--ink)';this.style.background='var(--bg-2)';"
+            onmouseout="this.style.borderColor='var(--line)';this.style.color='var(--ink-3)';this.style.background='transparent';"
+            title="Back to ${currentGrade.name}">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M15 18l-6-6 6-6"/>
+            </svg>
+          </button>
+          <div>
+            <h1 style="margin: 0;">${currentGrade.name} Settings</h1>
+          </div>
+        </div>
+      </div>
+
+      <div style="max-width: 700px;">
+        <!-- Number of Classes -->
+        <div class="panel" style="margin-bottom: 16px;">
+          <div class="panel-h">
+            <h3>Number of classes</h3>
+          </div>
+          <div class="panel-b">
+            <input type="number" id="numClasses" value="${window.currentGradeSettings.num_classes}" min="1" max="10"
+              style="width: 120px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: 14px;" oninput="checkClassSizeFeasibility()" onchange="autoSaveGradeSettings()" data-mutates="true">
+            <p style="font-size: 12px; color: var(--ink-3); margin-top: 8px;">How many classes to create for this grade</p>
+          </div>
+        </div>
+
+        <!-- Class Size Constraints -->
+        <div class="panel" style="margin-bottom: 16px;">
+          <div class="panel-h">
+            <h3>Class size constraints</h3>
+          </div>
+          <div class="panel-b">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px;">
+              <div>
+                <label style="display: block; font-size: 12px; font-weight: 500; color: var(--ink-3); margin-bottom: 6px;">Minimum per class</label>
+                <input type="number" id="minStudents" value="${window.currentGradeSettings.min_students}" min="1" max="50"
+                  style="width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: 14px;" oninput="checkClassSizeFeasibility()" onchange="autoSaveGradeSettings()" data-mutates="true">
+              </div>
+              <div>
+                <label style="display: block; font-size: 12px; font-weight: 500; color: var(--ink-3); margin-bottom: 6px;">Maximum per class</label>
+                <input type="number" id="maxStudents" value="${window.currentGradeSettings.max_students}" min="1" max="50"
+                  style="width: 100%; padding: 10px; border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: 14px;" oninput="checkClassSizeFeasibility()" onchange="autoSaveGradeSettings()" data-mutates="true">
+              </div>
+            </div>
+
+            <div style="padding: 14px; background: var(--bg-2); border-radius: 6px;">
+              <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                <input type="checkbox" id="enforceClassSize" ${window.currentGradeSettings.enforce_class_size ? "checked" : ""}
+                  style="width: 18px; height: 18px; cursor: pointer;" onchange="checkClassSizeFeasibility(); autoSaveGradeSettings();" data-mutates="true">
+                <span style="font-size: 13px; font-weight: 500;">Enforce as hard constraint</span>
+              </label>
+              <p style="font-size: 11px; color: var(--ink-3); margin: 8px 0 0 28px; line-height: 1.5;">
+                <strong>Checked:</strong> Optimizer fails if limits can't be met<br>
+                <strong>Unchecked:</strong> Optimizer tries its best but allows flexibility
+              </p>
+              <div id="classSizeFeasibilityWarning" style="display:none; margin-top:10px; padding:10px 12px; background:var(--rose-soft); border-radius:6px; font-size:12px; color:var(--ink); line-height:1.5;"></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Rules & Weights - inline editor will go here -->
+        <div class="panel">
+          <div class="panel-h">
+            <h3>Rules & Weights</h3>
+            <span class="sub">for this grade</span>
+          </div>
+          <div class="panel-b">
+            <p style="font-size: 13px; color: var(--ink-2); margin-bottom: 16px;">
+              ${hasCustomRules
+                ? `<strong>Custom rules</strong> — these override the global defaults for ${currentGrade.name}.`
+                : `<strong>Currently using global defaults</strong> — any changes you make will create custom rules for this grade only.`
+              }
+            </p>
+            <div id="rulesWeightsContainer">
+              ${weightSlidersHtml}
+            </div>
+            ${hasCustomRules
+              ? `<button class="btn ghost sm" onclick="resetToGlobalRulesInline()" data-mutates="true" style="margin-top: 12px;">Reset to Global Defaults</button>`
+              : `<p style="font-size: 12px; color: var(--ink-3); margin-top: 12px; font-style: italic;">Tip: Once you adjust any rule, custom rules will be created automatically.</p>`
+            }
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 // Students Screen
 async function renderStudentsScreen() {
   const res = await fetch(`/api/grades/${currentGrade.id}/students`);
@@ -1342,7 +1628,7 @@ async function renderStudentsScreen() {
         </div>
         ${renderTeacherBar(window.currentAvailableTeachers)}
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:600px;margin-top:8px">
-          <div class="panel" style="cursor:pointer"
+          <div class="panel" style="cursor:pointer" data-mutates="true"
             onclick="document.getElementById('grade-csv-input').click()"
             ondragover="event.preventDefault(); this.style.borderColor='var(--terra)'"
             ondragleave="this.style.borderColor=''"
@@ -1353,7 +1639,7 @@ async function renderStudentsScreen() {
               <div class="muted" style="font-size:12px">Drop a file or click to upload a student roster</div>
             </div>
           </div>
-          <div class="panel" style="cursor:pointer" onclick="openAddStudentModal()">
+          <div class="panel" style="cursor:pointer" onclick="openAddStudentModal()" data-mutates="true">
             <div class="panel-b" style="text-align:center;padding:32px 16px">
               <i data-lucide="user-plus" style="width:24px;height:24px;margin-bottom:10px;color:var(--ink-3)"></i>
               <div style="font-weight:600;font-size:14px;margin-bottom:6px">Add manually</div>
@@ -1408,6 +1694,7 @@ async function renderStudentsScreen() {
       <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
         <span style="font-size:12px;color:var(--ink-3);">${students.length} students</span>
         ${hasAssignments ? `<span style="color:var(--line-soft);">·</span><span style="font-size:12px;color:var(--ink-3);">${numClasses} classes</span>` : ""}
+        ${data.custom_rules && data.custom_rules.properties ? `<span style="color:var(--line-soft);">·</span><span style="font-size:11px;padding:2px 6px;border-radius:3px;background:var(--terra-soft);color:var(--terra);font-weight:600;">Custom rules</span>` : ""}
         ${
           hasAssignments && assignData?.solver_status === "OPTIMAL"
             ? `
@@ -1423,13 +1710,14 @@ async function renderStudentsScreen() {
             : ""
         }
         <div style="flex:1;min-width:8px;"></div>
-        <button class="btn ghost" onclick="showImportModal()"><i data-lucide="upload" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Re‑import</button>
+        <button class="btn ghost" onclick="showScreen('grade-settings')" data-mutates="true"><i data-lucide="settings" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Settings</button>
+        <button class="btn ghost" onclick="showImportModal()" data-mutates="true"><i data-lucide="upload" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Re‑import</button>
         ${
           hasAssignments
             ? `<button class="btn ghost" onclick="exportAssignmentCSV()"><i data-lucide="download" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Export</button>`
             : `<button class="btn ghost" onclick="exportCSV()"><i data-lucide="download" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Export</button>`
         }
-        <button class="btn terra" onclick="runAssignment()"><i data-lucide="play" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>${hasAssignments ? "Re-assign" : "Assign"}</button>
+        <button class="btn terra" onclick="runAssignment()" data-mutates="true"><i data-lucide="play" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>${hasAssignments ? "Re-assign" : "Assign"}</button>
       </div>
 
       <!-- Content area -->
@@ -1438,10 +1726,13 @@ async function renderStudentsScreen() {
           ? `
         <!-- Search + filter bar -->
         <div style="display:flex;align-items:center;gap:6px;margin-bottom:14px;flex-wrap:wrap;">
-          <input id="assignmentSearch" type="text" placeholder="Search students…"
-            oninput="filterAssignmentStudents(this.value)"
-            value="${(window.assignmentSearch || "").replace(/"/g, "&quot;")}"
-            style="height:30px;padding:0 10px;border:1px solid var(--line);border-radius:var(--rad);background:var(--panel);color:var(--ink);font:inherit;font-size:12px;width:180px;flex-shrink:0;">
+          <div style="position:relative;display:inline-block;">
+            <input id="assignmentSearch" type="text" placeholder="Search students…" data-readonly-ok
+              oninput="filterAssignmentStudents(this.value); updateAssignmentSearchClear()"
+              value="${(window.assignmentSearch || "").replace(/"/g, "&quot;")}"
+              style="height:30px;padding:0 28px 0 10px;border:1px solid var(--line);border-radius:var(--rad);background:var(--panel);color:var(--ink);font:inherit;font-size:12px;width:180px;">
+            <button id="assignmentSearchClear" onclick="document.getElementById('assignmentSearch').value=''; window.assignmentSearch=''; filterAssignmentStudents(''); updateAssignmentSearchClear();" style="display:${window.assignmentSearch ? 'flex' : 'none'};position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--ink-3);font-size:16px;line-height:1;padding:0;width:16px;height:16px;align-items:center;justify-content:center;" title="Clear search">×</button>
+          </div>
           ${boolFlags
             .map((p) => {
               const label =
@@ -1458,18 +1749,6 @@ async function renderStudentsScreen() {
           <div style="flex:1;"></div>
           <button id="cleanViewBtn" onclick="toggleCleanView()"
             style="height:30px;padding:0 12px;font-size:11px;border:1px solid var(--line);border-radius:var(--rad);cursor:pointer;background:${window.cleanView ? "var(--ink)" : "transparent"};color:${window.cleanView ? "#fff" : "var(--ink-3)"};">Clean view</button>
-        </div>
-
-        <!-- Assignment config strip -->
-        <div style="display:flex;align-items:center;gap:16px;margin-bottom:14px;padding:8px 12px;background:var(--bg-2);border:1px solid var(--line-soft);border-radius:var(--rad);font-size:12px;">
-          <span style="color:var(--ink-3);">Classes <strong style="color:var(--ink);margin-left:4px;">${numClasses}</strong></span>
-          <span style="color:var(--line);">|</span>
-          <span style="color:var(--ink-3);">Students <strong style="color:var(--ink);margin-left:4px;">${students.length}</strong></span>
-          <span style="color:var(--line);">|</span>
-          <span style="color:var(--ink-3);">Avg <strong style="color:var(--ink);margin-left:4px;">${(students.length / numClasses).toFixed(1)}</strong></span>
-          <span style="color:var(--line);">|</span>
-          <span style="color:var(--ink-3);">Size <strong style="color:var(--ink);margin-left:4px;">${data.min_students}–${data.max_students}</strong><span style="color:var(--ink-4);margin-left:4px;">${data.enforce_class_size ? "hard" : "soft"}</span></span>
-          <button class="btn ghost sm" onclick="showGradeSettings('${currentGrade.id}')" style="margin-left:auto;">Edit</button>
         </div>
 
         ${renderAssignmentResults(assignments, numClasses, assignData)}
@@ -1557,8 +1836,11 @@ function renderRosterTab(students) {
       <div class="panel">
         <div class="panel-h" style="padding: 10px 16px;">
           <div style="display: flex; gap: 10px; align-items: center;">
-            <input class="search-input" placeholder="Search students…" onkeyup="filterStudents(this.value)" />
-            <button class="btn sm" onclick="openAddStudentModal()">+ Add student</button>
+            <div style="position:relative;display:inline-block;">
+              <input id="rosterSearch" class="search-input" placeholder="Search students…" oninput="filterStudents(this.value); updateRosterSearchClear()" data-readonly-ok style="padding-right:28px;" />
+              <button id="rosterSearchClear" onclick="document.getElementById('rosterSearch').value=''; filterStudents(''); updateRosterSearchClear();" style="display:none;position:absolute;right:6px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--ink-3);font-size:16px;line-height:1;padding:0;width:16px;height:16px;align-items:center;justify-content:center;" title="Clear search">×</button>
+            </div>
+            <button class="btn sm" onclick="openAddStudentModal()" data-mutates="true">+ Add student</button>
           </div>
           <span class="sub">${students.length} shown</span>
         </div>
@@ -1924,7 +2206,7 @@ async function renderResultsScreen() {
         </button>
         <div class="grade-meta">
           ${hasAssignments ? '<button class="btn ghost" onclick="exportAssignmentCSV()"><i data-lucide="download" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Export</button>' : ""}
-          <button class="btn terra" onclick="runAssignment()"><i data-lucide="play" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>${hasAssignments ? "Re-assign" : "Assign"}</button>
+          <button class="btn terra" onclick="runAssignment()" data-mutates="true"><i data-lucide="play" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>${hasAssignments ? "Re-assign" : "Assign"}</button>
         </div>
       </div>
 
@@ -1951,7 +2233,7 @@ async function renderResultsScreen() {
         `
             : ""
         }
-        <button class="btn ghost sm" onclick="showGradeSettings('${currentGrade.id}')" style="margin-left:auto;">Edit</button>
+        <button class="btn ghost sm" data-mutates="true" onclick="showGradeSettings('${currentGrade.id}')" style="margin-left:auto;">Edit</button>
       </div>
 
       ${hasAssignments ? renderAssignmentResults(assignments, data.num_classes, assignData) : renderNoAssignments()}
@@ -1962,10 +2244,8 @@ async function renderResultsScreen() {
 // Toggle between simple and advanced balance stats view
 async function toggleBalanceStatsView() {
   window.balanceStatsAdvancedView = !window.balanceStatsAdvancedView;
-  const canvas = document.querySelector(".canvas");
-  if (canvas) {
-    canvas.innerHTML = await renderResultsScreen();
-  }
+  // Re-render current screen (merged view)
+  await showScreen('students');
 }
 
 // Generate minimal balance statistics view
@@ -2901,8 +3181,8 @@ function renderAssignmentResults(assignments, numClasses, assignData) {
         ? `
       <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 16px; background: ${window.hasUnsavedChanges ? "var(--amber-soft, var(--bg-2))" : "var(--bg-2)"}; border-radius: var(--rad); border: 1px solid ${window.hasUnsavedChanges ? "var(--amber, var(--line-soft))" : "var(--line-soft)"};">
         <div style="flex: 1; display: flex; align-items: center; gap: 12px;">
-          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;">
-            <input type="checkbox" id="editModeToggle" ${window.editMode ? "checked" : ""} onchange="toggleEditMode(this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
+          <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;" data-mutates="true">
+            <input type="checkbox" id="editModeToggle" ${window.editMode ? "checked" : ""} onchange="toggleEditMode(this.checked)" style="width: 16px; height: 16px; cursor: pointer;" data-mutates="true">
             <span style="font-weight: 500; color: var(--ink);">Edit Mode</span>
           </label>
           ${
@@ -2913,7 +3193,7 @@ function renderAssignmentResults(assignments, numClasses, assignData) {
         </div>
         <div id="editModeActions" style="display: ${window.editMode || window.hasUnsavedChanges ? "flex" : "none"}; gap: 8px;">
           <button class="btn ghost sm" onclick="revertToSolver()" ${!window.hasUnsavedChanges ? "disabled" : ""}>Revert</button>
-          <button class="btn primary sm" onclick="saveManualChanges()" ${!window.hasUnsavedChanges ? "disabled" : ""}>Save Changes</button>
+          <button class="btn primary sm" onclick="saveManualChanges()" data-mutates="true" ${!window.hasUnsavedChanges ? "disabled" : ""}>Save Changes</button>
         </div>
       </div>
     `
@@ -3291,7 +3571,7 @@ function showStudentDetail(name) {
   panel.innerHTML = `
     <div class="detail-h">
       <div>
-        <div class="nm" style="cursor:pointer;" title="Click to rename" onclick="startStudentNameEdit(this, '${student.name.replace(/'/g, "\\'")}')">${student.name}</div>
+        <div class="nm" style="cursor:pointer;" title="Click to rename" data-mutates="true" onclick="startStudentNameEdit(this, '${student.name.replace(/'/g, "\\'")}')">${student.name}</div>
         <div class="gr">${currentGrade?.name || "Grade"}</div>
       </div>
       <button class="btn ghost sm" onclick="closeStudentDetail()">✕</button>
@@ -3301,14 +3581,14 @@ function showStudentDetail(name) {
         <h5>Properties</h5>
         <div class="prop-row">
           <span class="k">Gender</span>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg ${student.gender === "g" ? "active" : ""}" data-property="gender" data-value="g">Girl</button>
             <button class="seg ${student.gender === "b" ? "active" : ""}" data-property="gender" data-value="b">Boy</button>
           </div>
         </div>
         <div class="prop-row">
           <span class="k">Behavior</span>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg ${student.behavior === "cooperative" ? "active" : ""}" data-property="behavior" data-value="cooperative">Cooperative</button>
             <button class="seg ${student.behavior === "neutral" ? "active" : ""}" data-property="behavior" data-value="neutral">Neutral</button>
             <button class="seg ${student.behavior === "disruptive" ? "active" : ""}" data-property="behavior" data-value="disruptive">Disruptive</button>
@@ -3316,7 +3596,7 @@ function showStudentDetail(name) {
         </div>
         <div class="prop-row">
           <span class="k">Independence</span>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg ${student.independence === "high" ? "active" : ""}" data-property="independence" data-value="high">High</button>
             <button class="seg ${student.independence === "neutral" ? "active" : ""}" data-property="independence" data-value="neutral">Neutral</button>
             <button class="seg ${student.independence === "low" ? "active" : ""}" data-property="independence" data-value="low">Low</button>
@@ -3324,35 +3604,35 @@ function showStudentDetail(name) {
         </div>
         <div class="prop-row">
           <span class="k">IEP</span>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg ${student.iep === false ? "active" : ""}" data-property="iep" data-value="false">No</button>
             <button class="seg ${student.iep === true ? "active" : ""}" data-property="iep" data-value="true">Yes</button>
           </div>
         </div>
         <div class="prop-row">
           <span class="k">504 Plan</span>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg ${student["504"] === false ? "active" : ""}" data-property="504" data-value="false">No</button>
             <button class="seg ${student["504"] === true ? "active" : ""}" data-property="504" data-value="true">Yes</button>
           </div>
         </div>
         <div class="prop-row">
           <span class="k">ESL</span>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg ${student.esl === false ? "active" : ""}" data-property="esl" data-value="false">No</button>
             <button class="seg ${student.esl === true ? "active" : ""}" data-property="esl" data-value="true">Yes</button>
           </div>
         </div>
         <div class="prop-row">
           <span class="k">GATE</span>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg ${student.gate === false ? "active" : ""}" data-property="gate" data-value="false">No</button>
             <button class="seg ${student.gate === true ? "active" : ""}" data-property="gate" data-value="true">Yes</button>
           </div>
         </div>
         <div class="prop-row">
           <span class="k">Math level</span>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg ${student.math === "l" ? "active" : ""}" data-property="math" data-value="l">Low</button>
             <button class="seg ${student.math === "m" ? "active" : ""}" data-property="math" data-value="m">Med</button>
             <button class="seg ${student.math === "h" ? "active" : ""}" data-property="math" data-value="h">High</button>
@@ -3360,7 +3640,7 @@ function showStudentDetail(name) {
         </div>
         <div class="prop-row">
           <span class="k">Reading level</span>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg ${student.reading === "l" ? "active" : ""}" data-property="reading" data-value="l">Low</button>
             <button class="seg ${student.reading === "m" ? "active" : ""}" data-property="reading" data-value="m">Med</button>
             <button class="seg ${student.reading === "h" ? "active" : ""}" data-property="reading" data-value="h">High</button>
@@ -3374,7 +3654,7 @@ function showStudentDetail(name) {
               return `
         <div class="prop-row">
           <span class="k">${prop.display_name}</span>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg ${!val ? "active" : ""}" data-property="${prop.name}" data-value="false">No</button>
             <button class="seg ${val ? "active" : ""}" data-property="${prop.name}" data-value="true">Yes</button>
           </div>
@@ -3384,7 +3664,7 @@ function showStudentDetail(name) {
               return `
         <div class="prop-row">
           <span class="k">${prop.display_name}</span>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             ${(prop.values || []).map((v) => `<button class="seg ${val === v ? "active" : ""}" data-property="${prop.name}" data-value="${v}">${v}</button>`).join("")}
           </div>
         </div>`;
@@ -3396,7 +3676,7 @@ function showStudentDetail(name) {
       <div class="detail-section">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px">
           <h5 style="margin:0">Friends (${student.friends ? student.friends.split(",").filter((f) => f.trim()).length : 0})</h5>
-          <button class="btn ghost sm" onclick="openRelationModal('${student.name.replace(/'/g, "\\'")}', 'friends')">+ Add</button>
+          <button class="btn ghost sm" data-mutates="true" onclick="openRelationModal('${student.name.replace(/'/g, "\\'")}', 'friends')">+ Add</button>
         </div>
         <div style="display:flex; flex-wrap:wrap; gap:6px">
           ${
@@ -3421,7 +3701,7 @@ function showStudentDetail(name) {
                   <span class="avatar ${friend.gender}">${fInitials}</span>
                   <span>${friend.name}</span>
                 </span>
-                <button onclick="removeRelation('${student.name.replace(/'/g, "\\'")}', 'friends', '${fname_trimmed.replace(/'/g, "\\'")}')" style="background:none; border:none; cursor:pointer; padding:0 2px; color:var(--ink-3); font-size:12px; line-height:1" title="Remove">×</button>
+                <button data-mutates="true" onclick="removeRelation('${student.name.replace(/'/g, "\\'")}', 'friends', '${fname_trimmed.replace(/'/g, "\\'")}')" style="background:none; border:none; cursor:pointer; padding:0 2px; color:var(--ink-3); font-size:12px; line-height:1" title="Remove">×</button>
               </span>
             `;
                   })
@@ -3434,7 +3714,7 @@ function showStudentDetail(name) {
       <div class="detail-section">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px">
           <h5 style="margin:0">Cannot be with (${student.incompatible ? student.incompatible.split(",").filter((f) => f.trim()).length : 0})</h5>
-          <button class="btn ghost sm" onclick="openRelationModal('${student.name.replace(/'/g, "\\'")}', 'incompatible')">+ Add</button>
+          <button class="btn ghost sm" data-mutates="true" onclick="openRelationModal('${student.name.replace(/'/g, "\\'")}', 'incompatible')">+ Add</button>
         </div>
         <div style="display:flex; flex-wrap:wrap; gap:6px">
           ${
@@ -3459,7 +3739,7 @@ function showStudentDetail(name) {
                   <span class="avatar ${incomp.gender}">${iInitials}</span>
                   <span>${incomp.name}</span>
                 </span>
-                <button onclick="removeRelation('${student.name.replace(/'/g, "\\'")}', 'incompatible', '${fname_trimmed.replace(/'/g, "\\'")}')" style="background:none; border:none; cursor:pointer; padding:0 2px; color:var(--ink-3); font-size:12px; line-height:1" title="Remove">×</button>
+                <button data-mutates="true" onclick="removeRelation('${student.name.replace(/'/g, "\\'")}', 'incompatible', '${fname_trimmed.replace(/'/g, "\\'")}')" style="background:none; border:none; cursor:pointer; padding:0 2px; color:var(--ink-3); font-size:12px; line-height:1" title="Remove">×</button>
               </span>
             `;
                   })
@@ -3471,7 +3751,7 @@ function showStudentDetail(name) {
       <div class="detail-section">
         <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:8px">
           <h5 style="margin:0">Previous teachers</h5>
-          <button class="btn ghost sm" onclick="addPreviousTeacher('${student.name.replace(/'/g, "\\'")}')">+ Add</button>
+          <button class="btn ghost sm" data-mutates="true" onclick="addPreviousTeacher('${student.name.replace(/'/g, "\\'")}')">+ Add</button>
         </div>
         <div style="display:flex; flex-wrap:wrap; gap:6px" id="prev-teachers-list">
           ${(() => {
@@ -3491,7 +3771,7 @@ function showStudentDetail(name) {
                 (t) => `
               <span class="friend-pill" style="display:inline-flex; align-items:center; gap:4px">
                 <span style="font-size:12px">${t}</span>
-                <button onclick="removePreviousTeacher('${student.name.replace(/'/g, "\\'")}', '${t.replace(/'/g, "\\'")}')" style="background:none; border:none; cursor:pointer; padding:0 2px; color:var(--ink-3); font-size:12px; line-height:1" title="Remove">×</button>
+                <button data-mutates="true" onclick="removePreviousTeacher('${student.name.replace(/'/g, "\\'")}', '${t.replace(/'/g, "\\'")}')" style="background:none; border:none; cursor:pointer; padding:0 2px; color:var(--ink-3); font-size:12px; line-height:1" title="Remove">×</button>
               </span>`,
               )
               .join("");
@@ -3501,7 +3781,7 @@ function showStudentDetail(name) {
 
       <div class="detail-section" style="margin-top:auto; padding-top:16px; border-top:1px solid var(--line-soft)">
         <button class="btn ghost sm" style="color:var(--rose); border-color:var(--rose-soft); width:100%"
-          onclick="confirmDeleteStudent('${student.name.replace(/'/g, "\\'")}')">
+          onclick="confirmDeleteStudent('${student.name.replace(/'/g, "\\'")}')" data-mutates="true">
           Remove from roster
         </button>
       </div>
@@ -3783,7 +4063,7 @@ function openRelationModal(studentName, type) {
         <button onclick="this.closest('[style*=fixed]').remove()" style="background:none;border:none;cursor:pointer;font-size:18px;color:var(--ink-3);padding:0 4px">×</button>
       </div>
       <div style="padding:12px 16px;border-bottom:1px solid var(--line-soft)">
-        <input id="relation-search" type="text" placeholder="Search by name…" autocomplete="off"
+        <input id="relation-search" type="text" placeholder="Search by name…" autocomplete="off" data-readonly-ok
           style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--line-soft);border-radius:6px;font-size:13px;background:var(--bg-2);color:var(--ink);outline:none"
           oninput="filterRelationList(this.value)">
       </div>
@@ -4176,6 +4456,71 @@ function showSavePrompt(message) {
 }
 window.showSavePrompt = showSavePrompt;
 
+function showReadOnlyModal(gradeName, heldBy) {
+  return new Promise((resolve) => {
+    const modal = document.createElement('div');
+    modal.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    `;
+
+    modal.innerHTML = `
+      <div style="background: var(--bg); border-radius: var(--rad); padding: 24px; max-width: 420px; box-shadow: 0 4px 20px rgba(0,0,0,0.2);">
+        <div style="font-size: 18px; font-weight: 600; margin-bottom: 16px; color: var(--ink);">
+          ${gradeName} is being edited
+        </div>
+        <div style="font-size: 14px; line-height: 1.6; color: var(--ink-2); margin-bottom: 20px;">
+          <strong>${heldBy}</strong> is currently editing ${gradeName}.
+          <br><br>
+          You can view students and assignments in <strong>read-only mode</strong>, but you won't be able to make changes until they finish.
+          <br><br>
+          If they've closed their browser, you can try clicking <strong>"Request edit"</strong> in the top right.
+        </div>
+        <div style="display: flex; gap: 8px; justify-content: flex-end;">
+          <button class="btn ghost sm" id="cancelReadOnlyBtn" style="min-width: 80px;">
+            Cancel
+          </button>
+          <button class="btn primary sm" id="viewReadOnlyBtn" style="min-width: 100px;">
+            View Read-Only
+          </button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Handle button clicks
+    const cancelBtn = modal.querySelector('#cancelReadOnlyBtn');
+    const viewBtn = modal.querySelector('#viewReadOnlyBtn');
+
+    cancelBtn.addEventListener('click', () => {
+      modal.remove();
+      // Don't switch grades - just cancel the action
+      resolve('cancel');
+    });
+
+    viewBtn.addEventListener('click', () => {
+      modal.remove();
+      resolve('view');
+    });
+
+    // Close on backdrop click = cancel
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        cancelBtn.click();
+      }
+    });
+  });
+}
+
 function showNotice(message, type = "success") {
   const isError = type === "error";
   const iconName = isError ? "x" : "check";
@@ -4484,7 +4829,7 @@ function openAddStudentModal() {
 
         <div>
           <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">Gender</label>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg active" data-field="gender" data-value="g">Girl</button>
             <button class="seg" data-field="gender" data-value="b">Boy</button>
           </div>
@@ -4492,7 +4837,7 @@ function openAddStudentModal() {
 
         <div>
           <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">Behavior</label>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg active" data-field="behavior" data-value="cooperative">Cooperative</button>
             <button class="seg" data-field="behavior" data-value="neutral">Neutral</button>
             <button class="seg" data-field="behavior" data-value="disruptive">Disruptive</button>
@@ -4501,7 +4846,7 @@ function openAddStudentModal() {
 
         <div>
           <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">Independence</label>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg" data-field="independence" data-value="high">High</button>
             <button class="seg active" data-field="independence" data-value="neutral">Neutral</button>
             <button class="seg" data-field="independence" data-value="low">Low</button>
@@ -4510,7 +4855,7 @@ function openAddStudentModal() {
 
         <div>
           <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">Math level</label>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg" data-field="math" data-value="h">High</button>
             <button class="seg active" data-field="math" data-value="m">Medium</button>
             <button class="seg" data-field="math" data-value="l">Low</button>
@@ -4519,7 +4864,7 @@ function openAddStudentModal() {
 
         <div>
           <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">Reading level</label>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg" data-field="reading" data-value="h">High</button>
             <button class="seg active" data-field="reading" data-value="m">Medium</button>
             <button class="seg" data-field="reading" data-value="l">Low</button>
@@ -4554,7 +4899,7 @@ function openAddStudentModal() {
               return `
         <div>
           <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">${prop.display_name}</label>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             <button class="seg active" data-field="${prop.name}" data-value="false">No</button>
             <button class="seg" data-field="${prop.name}" data-value="true">Yes</button>
           </div>
@@ -4564,7 +4909,7 @@ function openAddStudentModal() {
               return `
         <div>
           <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px">${prop.display_name}</label>
-          <div class="segmented">
+          <div class="segmented" data-mutates="true">
             ${values.map((v, i) => `<button class="seg ${i === 0 ? "active" : ""}" data-field="${prop.name}" data-value="${v}">${v}</button>`).join("")}
           </div>
         </div>`;
@@ -4811,6 +5156,22 @@ function filterStudents(value) {
   });
 }
 
+function updateRosterSearchClear() {
+  const input = document.getElementById('rosterSearch');
+  const clearBtn = document.getElementById('rosterSearchClear');
+  if (input && clearBtn) {
+    clearBtn.style.display = input.value ? 'flex' : 'none';
+  }
+}
+
+function updateAssignmentSearchClear() {
+  const input = document.getElementById('assignmentSearch');
+  const clearBtn = document.getElementById('assignmentSearchClear');
+  if (input && clearBtn) {
+    clearBtn.style.display = input.value ? 'flex' : 'none';
+  }
+}
+
 let currentSort = "name"; // Track current sort
 
 function sortStudents(sortBy) {
@@ -5028,9 +5389,6 @@ window.exportAssignmentCSV = exportAssignmentCSV;
 window.switchSchoolYear = switchSchoolYear;
 window.createNextYear = createNextYear;
 window.clearSchoolYear = clearSchoolYear;
-window.showGradeSettings = showGradeSettings;
-window.closeGradeSettings = closeGradeSettings;
-window.saveGradeSettings = saveGradeSettings;
 window.switchStudentTab = switchStudentTab;
 window.handleGradeCSVFile = handleGradeCSVFile;
 window.openAddGradeModal = openAddGradeModal;
