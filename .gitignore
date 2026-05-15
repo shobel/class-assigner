@@ -48,3 +48,9 @@ webapp/data/school_years/
 webapp/data/config.json
 webapp/data/*.json
 webapp/data/*.backup
+webapp/data/*.db
+webapp/data/*.db-shm
+webapp/data/*.db-wal
+webapp/*.db
+supabase/.temp/
+test_infeasible.csv
