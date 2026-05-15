@@ -55,7 +55,8 @@ async function loadConfig() {
       ${year === yearsData.current ? '<span class="nav-count" style="font-size: 9px; padding: 2px 5px;">current</span>' : ""}
       <div class="year-nav-actions">
         ${year !== yearsData.current ? `<button class="btn-tiny ghost" onclick="event.stopPropagation(); setCurrentYear('${year}')" title="Mark as current year" style="font-size: 9px;">set current</button>` : ""}
-        <button class="nav-clear" onclick="event.stopPropagation(); clearSchoolYear('${year}')" title="Clear all data"><span style="font-size: 9px; opacity: 0.7;">[dev]</span> ×</button>
+        ${window.classifyIsAdmin ? `<button class="btn-tiny ghost" onclick="event.stopPropagation(); showImportModal('schoolYear')" title="Import students from CSV" style="font-size: 9px;">import</button>` : ''}
+        ${window.classifyIsAdmin ? `<button class="nav-clear" onclick="event.stopPropagation(); clearSchoolYear('${year}')" title="Clear all data"><span style="font-size: 9px; opacity: 0.7;">[dev]</span> ×</button>` : ''}
       </div>
     </div>
   `,
@@ -255,7 +256,7 @@ async function handleActivationImport(input) {
     const data = await res.json();
     if (res.ok) {
       statusEl.textContent = "Restored! Starting app…";
-      statusEl.style.color = "var(--sage-ink)";
+      statusEl.style.color = "var(--sage)";
       setTimeout(() => {
         document.getElementById("activation-overlay").classList.add("hidden");
         startApp();
@@ -273,12 +274,28 @@ async function handleActivationImport(input) {
 
 async function startApp() {
   const needsOnboarding = await checkOnboarding();
-  if (!needsOnboarding) {
-    await loadConfig();
-    await loadGrades();
-    showScreen("welcome");
-  } else {
-    setupDropZone();
+  await loadConfig();
+  await loadGrades();
+  showScreen("welcome");
+  // Check for updates in background (non-blocking)
+  checkForUpdate();
+}
+
+async function checkForUpdate() {
+  try {
+    const res = await fetch('/api/check-update');
+    const data = await res.json();
+    if (data.update_available) {
+      const banner = document.getElementById('update-banner');
+      const msg = document.getElementById('update-msg');
+      const link = document.getElementById('update-link');
+      msg.textContent = `Classify ${data.latest} is available (you have ${data.current}).${data.notes ? ' ' + data.notes : ''}`;
+      link.href = data.download_url || '#';
+      if (!data.download_url) link.style.display = 'none';
+      banner.style.display = '';
+    }
+  } catch (e) {
+    // Silent fail — update check is best-effort
   }
 }
 
@@ -324,8 +341,8 @@ function renderGradeNav() {
           ${g.students} student${g.students !== 1 ? "s" : ""} · ${statusText}
         </div>
       </div>
-      <button class="grade-delete-btn" title="Delete grade"
-        onclick="event.stopPropagation(); confirmDeleteGrade('${g.id}', '${g.name.replace(/'/g, "\\'")}')">×</button>
+      ${window.classifyIsAdmin ? `<button class="grade-delete-btn" title="Delete grade"
+        onclick="event.stopPropagation(); confirmDeleteGrade('${g.id}', '${g.name.replace(/'/g, "\\'")}')">×</button>` : ''}
     </div>
   `;
     })
@@ -791,8 +808,9 @@ async function showScreen(screen) {
   } else {
     // Not on a grade screen - release current lock and clear selection
     if (window.currentGradeId && typeof releaseLock === "function") {
-      await releaseLock(window.currentGradeId);
-      window.currentGradeId = null;
+      const gradeToRelease = window.currentGradeId;
+      window.currentGradeId = null; // clear first so updateLockUI hides the indicator
+      await releaseLock(gradeToRelease);
     }
     // Clear currentGrade so no grade appears selected
     if (!isGradeScreen) {
@@ -811,6 +829,10 @@ async function showScreen(screen) {
     document.getElementById("nav-welcome")?.classList.add("active");
   if (screen === "school-config")
     document.getElementById("nav-school-config")?.classList.add("active");
+  if (screen === "history")
+    document.getElementById("nav-history")?.classList.add("active");
+  if (screen === "users")
+    document.getElementById("nav-users")?.classList.add("active");
 
   // Update breadcrumbs
   const crumbGrade = document.getElementById("crumb-grade");
@@ -829,6 +851,8 @@ async function showScreen(screen) {
     welcome: "Welcome",
     config: "Configuration",
     "school-config": "School config",
+    "history": "History",
+    "users": "Users",
     import: "Import students",
     students: "Roster",
     results: "Class assignments",
@@ -852,6 +876,10 @@ async function showScreen(screen) {
     content = await renderStudentsScreen();
   } else if (screen === "grade-settings") {
     content = await renderGradeSettingsScreen();
+  } else if (screen === "history") {
+    content = await renderHistoryScreen();
+  } else if (screen === "users") {
+    content = await renderUsersScreen();
   }
 
   // Update content but preserve detail panel
@@ -881,6 +909,16 @@ async function showScreen(screen) {
 function renderWelcomeScreen() {
   const totalStudents = grades.reduce((sum, g) => sum + g.students, 0);
   const totalGrades = grades.length;
+
+  if (totalGrades === 0 && !window.classifyIsAdmin) {
+    return `
+      <div class="welcome">
+        <h1>Nothing here yet.</h1>
+        <p class="lede" style="max-width:480px;">
+          Your admin hasn't set up this school year yet. Check back soon — once grades are imported you'll see them here.
+        </p>
+      </div>`;
+  }
 
   return `
     <div class="welcome">
@@ -956,6 +994,421 @@ function renderWelcomeScreen() {
 }
 
 // Config Screen
+const HISTORY_ACTION_LABELS = {
+  run_optimizer:              { label: 'Ran optimizer',                     icon: '▶' },
+  save_manual:                { label: 'Saved manual edits',                icon: '✎' },
+  update_rules:               { label: 'Updated grade rules',               icon: '⚖' },
+  reset_rules:                { label: 'Reset rules to global',             icon: '↺' },
+  update_settings:            { label: 'Updated grade settings',            icon: '⚙' },
+  rename_classes:             { label: 'Renamed classes',                   icon: '✎' },
+  add_student:                { label: 'Added student',                     icon: '+' },
+  remove_student:             { label: 'Removed student',                   icon: '−' },
+  edit_student:               { label: 'Edited student',                    icon: '✎' },
+  add_teacher:                { label: 'Added teacher',                     icon: '+' },
+  remove_teacher:             { label: 'Removed teacher',                   icon: '−' },
+  update_teacher_assignments: { label: 'Updated class–teacher assignments', icon: '✎' },
+};
+
+const HISTORY_CATEGORY_COLOR = {
+  assignment: 'var(--terra)',
+  students:   'var(--sage)',
+  teachers:   'var(--amber)',
+};
+
+function historyRelativeTime(iso) {
+  const diff = Date.now() - new Date(iso).getTime();
+  const min = Math.floor(diff / 60000);
+  const hr  = Math.floor(diff / 3600000);
+  const day = Math.floor(diff / 86400000);
+  if (min < 1)  return 'just now';
+  if (min < 60) return `${min}m ago`;
+  if (hr  < 24) return `${hr}h ago`;
+  if (day < 7)  return `${day}d ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+const SETTINGS_KEY_LABELS = {
+  num_classes: 'Classes',
+  min_students: 'Min students',
+  max_students: 'Max students',
+  enforce_class_size: 'Enforce size',
+};
+
+function historyDetailText(e) {
+  const d = e.details || {};
+  if (e.action === 'run_optimizer') {
+    const s = d.solver_status === 'OPTIMAL' ? ' · Optimal' : '';
+    return `${d.num_classes} classes · ${d.student_count} students${s}`;
+  }
+  if (e.action === 'update_rules' && d.changes && d.changes.length) return d.changes.join(', ');
+  if (e.action === 'update_settings') {
+    return Object.entries(d).map(([k, v]) => {
+      const label = SETTINGS_KEY_LABELS[k] || k.replace(/_/g, ' ');
+      return `${label} → ${v}`;
+    }).join(', ');
+  }
+  if (e.action === 'rename_classes' && d.class_names) {
+    const parts = Object.entries(d.class_names).map(([k, v]) => `Class ${k} → "${v}"`);
+    return parts.join(', ');
+  }
+  if (e.action === 'edit_student') {
+    const students = d.students || [];
+    if (!students.length) return '';
+    const first = students[0];
+    if (typeof first !== 'object') return first; // legacy format
+    const name = first.name;
+    let fieldStr = '';
+    if (first.changes && first.changes.length) {
+      const fmt = v => v === true ? 'Yes' : v === false ? 'No' : (v == null ? 'none' : String(v));
+      const FIELD_LABELS = { iep: 'IEP', ell: 'ELL', gifted: 'Gifted', gender: 'Gender', class: 'Class' };
+      fieldStr = ' (' + first.changes.map(c => {
+        const label = FIELD_LABELS[c.field] || c.field;
+        return `${label}: ${fmt(c.from)} → ${fmt(c.to)}`;
+      }).join(', ') + ')';
+    } else if (first.fields && first.fields.length) {
+      // legacy {name, fields} format
+      fieldStr = ` (${first.fields.join(', ')})`;
+    }
+    const more = students.length > 1 ? ` +${students.length - 1} more` : '';
+    return `${name}${fieldStr}${more}`;
+  }
+  if (['add_student','remove_student','add_teacher','remove_teacher'].includes(e.action)) {
+    const names = d.students || d.teachers || [];
+    if (!names.length) return '';
+    return names.length === 1 ? names[0] : `${names[0]} +${names.length - 1} more`;
+  }
+  return '';
+}
+
+function historyGetStartDate(range) {
+  const now = new Date();
+  if (range === 'week')    { const d = new Date(now); d.setDate(d.getDate() - 7); return d; }
+  if (range === 'month')   return new Date(now.getFullYear(), now.getMonth(), 1);
+  if (range === 'quarter') { const d = new Date(now); d.setMonth(d.getMonth() - 3); return d; }
+  if (range === 'year')    return new Date(now.getFullYear(), 0, 1);
+  return null;
+}
+
+function renderHistoryEntries() {
+  const entries = window.historyAllEntries || [];
+  const tab = window.historyTab || 'assignment';
+  const range = window.historyRange || 'month';
+  const startDate = historyGetStartDate(range);
+  const color = HISTORY_CATEGORY_COLOR[tab] || 'var(--ink-3)';
+
+  const filtered = entries.filter(e => {
+    if (e.category !== tab) return false;
+    if (startDate && new Date(e.timestamp) < startDate) return false;
+    return true;
+  });
+
+  const container = document.getElementById('historyEntries');
+  if (!container) return;
+
+  if (!filtered.length) {
+    container.innerHTML = `<div class="panel"><div class="panel-b" style="padding:40px;text-align:center;color:var(--ink-4);font-size:13px;">No activity in this period</div></div>`;
+    return;
+  }
+
+  const rows = filtered.map(e => {
+    const action = HISTORY_ACTION_LABELS[e.action] || { label: e.action, icon: '·' };
+    const detail = historyDetailText(e);
+    return `<div style="display:flex;align-items:baseline;gap:12px;padding:10px 16px;border-bottom:1px solid var(--line-soft);">
+      <span style="flex:0 0 20px;font-size:13px;color:${color};text-align:center;">${action.icon}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;color:var(--ink);">${action.label}${e.grade ? ` <span style="color:var(--ink-3);">· ${e.grade}</span>` : ''}</div>
+        ${detail ? `<div style="font-size:11px;color:var(--ink-4);margin-top:2px;">${detail}</div>` : ''}
+      </div>
+      <div style="flex:0 0 auto;text-align:right;">
+        <div style="font-size:11px;color:var(--ink-3);">${e.session_name}</div>
+        <div style="font-size:10px;color:var(--ink-4);">${historyRelativeTime(e.timestamp)}</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  container.innerHTML = `<div class="panel"><div class="panel-b" style="padding:0">${rows}</div></div>`;
+}
+
+function switchHistoryTab(tab) {
+  window.historyTab = tab;
+  document.querySelectorAll('[id^="histTab_"]').forEach(btn => {
+    const active = btn.id === 'histTab_' + tab;
+    btn.style.borderBottomColor = active ? 'var(--ink)' : 'transparent';
+    btn.style.color = active ? 'var(--ink)' : 'var(--ink-3)';
+    btn.style.fontWeight = active ? '600' : '400';
+  });
+  renderHistoryEntries();
+}
+
+function switchHistoryRange(range) {
+  window.historyRange = range;
+  renderHistoryEntries();
+}
+
+async function renderHistoryScreen() {
+  if (!window.historyTab) window.historyTab = 'assignment';
+  if (!window.historyRange) window.historyRange = 'month';
+
+  try {
+    const res = await fetch('/api/history');
+    window.historyAllEntries = await res.json();
+  } catch (e) {
+    window.historyAllEntries = [];
+  }
+
+  const TABS = [
+    { id: 'assignment', label: 'Assignment'    },
+    { id: 'students',   label: 'Student data'  },
+    { id: 'teachers',   label: 'Teacher data'  },
+  ];
+
+  const RANGES = [
+    { id: 'week',    label: 'This week'     },
+    { id: 'month',   label: 'This month'    },
+    { id: 'quarter', label: 'Last 3 months' },
+    { id: 'year',    label: 'This year'     },
+    { id: 'all',     label: 'All time'      },
+  ];
+
+  const html = `
+    <div class="canvas">
+      <div class="page-hd">
+        <div>
+          <h1>Activity <em>history</em></h1>
+          <p class="lede">A log of every change made across all grades.</p>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;margin-bottom:16px;border-bottom:1px solid var(--line);">
+        ${TABS.map(t => `
+          <button id="histTab_${t.id}" onclick="switchHistoryTab('${t.id}')"
+            style="padding:8px 16px;font-size:13px;background:none;border:none;border-bottom:2px solid ${window.historyTab === t.id ? 'var(--ink)' : 'transparent'};color:${window.historyTab === t.id ? 'var(--ink)' : 'var(--ink-3)'};cursor:pointer;font-weight:${window.historyTab === t.id ? '600' : '400'};margin-bottom:-1px;transition:all 0.1s;">${t.label}</button>`).join('')}
+        <div style="flex:1;"></div>
+        <select onchange="switchHistoryRange(this.value)"
+          style="height:28px;padding:0 8px;font-size:12px;border:1px solid var(--line);border-radius:var(--rad);background:var(--panel);color:var(--ink);font-family:inherit;margin-bottom:4px;">
+          ${RANGES.map(r => `<option value="${r.id}" ${window.historyRange === r.id ? 'selected' : ''}>${r.label}</option>`).join('')}
+        </select>
+      </div>
+      <div id="historyEntries" style="max-width:680px"></div>
+    </div>`;
+
+  // Render entries after DOM is set
+  requestAnimationFrame(renderHistoryEntries);
+  return html;
+}
+
+// ── Users screen ─────────────────────────────────────────────────────────────
+
+function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/'/g,'&#39;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+async function renderUsersScreen() {
+  const res = await fetch('/api/users');
+  const users = await res.json();
+  const me = await fetch('/api/me').then(r => r.json());
+
+  return `
+    <div class="canvas">
+      <div class="page-hd">
+        <div>
+          <h1>User <em>accounts</em></h1>
+          <p class="lede">Manage who can sign in to Classify.</p>
+        </div>
+        <button class="btn primary" onclick="openCreateUserModal()">+ Add user</button>
+      </div>
+      <div class="panel" style="max-width:560px;">
+        <div class="panel-b" style="padding:0;">
+          ${users.map(u => `
+            <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line-soft);">
+              <div style="width:32px;height:32px;border-radius:50%;background:var(--terra-soft);color:var(--terra);font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                ${u.username[0].toUpperCase()}
+              </div>
+              <div style="flex:1;min-width:0;">
+                <div style="font-size:13px;font-weight:500;color:var(--ink);display:flex;align-items:center;gap:6px;">
+                  ${u.username}${u.id === me.id ? ' <span style="font-size:11px;color:var(--ink-4);font-weight:400;">(you)</span>' : ''}
+                  ${!u.has_password ? '<span style="font-size:10px;font-weight:600;background:oklch(0.94 0.06 80);color:oklch(0.50 0.10 60);padding:2px 6px;border-radius:4px;letter-spacing:0.03em;">PENDING SETUP</span>' : ''}
+                </div>
+                <div style="font-size:11px;color:var(--ink-4);">${u.is_admin ? 'Admin' : 'Teacher'} · joined ${new Date(u.created_at).toLocaleDateString()}</div>
+              </div>
+              <div style="display:flex;gap:6px;">
+                ${!u.has_password
+                  ? `<button class="btn ghost sm" onclick="regenerateInvite(${u.id}, '${escAttr(u.username)}')">New invite</button>`
+                  : `<button class="btn ghost sm" onclick="openChangePasswordModal(${u.id}, '${escAttr(u.username)}', ${u.id === me.id})">Change password</button>`
+                }
+                ${u.id !== me.id ? `<button class="btn ghost sm" style="color:var(--rose);" onclick="deleteUser(${u.id}, '${escAttr(u.username)}')">Remove</button>` : ''}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    </div>`;
+}
+window.renderUsersScreen = renderUsersScreen;
+
+async function openCreateUserModal() {
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+  modal.innerHTML = `
+    <div style="background:var(--bg);border-radius:var(--rad-lg);padding:28px;max-width:420px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
+      <div style="font-size:16px;font-weight:600;margin-bottom:8px;">Add user</div>
+      <div style="font-size:13px;color:var(--ink-3);margin-bottom:20px;line-height:1.5;">
+        An invite code will be generated. Share it with the user — they'll use it to set their own password at <strong>/setup</strong>.
+      </div>
+      <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:5px;">Username</label>
+      <input id="newUserName" type="text" placeholder="e.g. jsmith"
+        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--line);border-radius:var(--rad);font-size:14px;font-family:inherit;background:var(--bg-2);color:var(--ink);outline:none;margin-bottom:14px;">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2);margin-bottom:20px;cursor:pointer;">
+        <input type="checkbox" id="newUserAdmin"> Grant admin privileges
+      </label>
+      <div id="createUserError" style="display:none;color:var(--rose);font-size:12px;margin-bottom:10px;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn ghost" onclick="this.closest('[style*=fixed]').remove()">Cancel</button>
+        <button class="btn primary" onclick="submitCreateUser()">Create &amp; get invite code</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  setTimeout(() => document.getElementById('newUserName')?.focus(), 50);
+}
+window.openCreateUserModal = openCreateUserModal;
+
+async function submitCreateUser() {
+  const username = document.getElementById('newUserName').value.trim();
+  const is_admin = document.getElementById('newUserAdmin').checked;
+  const errEl = document.getElementById('createUserError');
+
+  if (!username) {
+    errEl.textContent = 'Username is required.';
+    errEl.style.display = '';
+    return;
+  }
+  const res = await fetch('/api/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username, is_admin }),
+  });
+  const d = await res.json();
+  if (res.ok) {
+    // Replace modal content with invite code display
+    const box = document.querySelector('[style*=fixed] > div');
+    const setupUrl = `${window.location.origin}/setup`;
+    box.innerHTML = `
+      <div style="font-size:16px;font-weight:600;margin-bottom:8px;">Invite code for ${escAttr(d.username)}</div>
+      <div style="font-size:13px;color:var(--ink-3);margin-bottom:16px;line-height:1.5;">
+        Share this code with <strong>${escAttr(d.username)}</strong>. They go to <a href="${setupUrl}" target="_blank" style="color:var(--terra);">/setup</a> and enter it to create their password. The code expires in 7 days.
+      </div>
+      <div style="background:var(--bg-2);border:1px solid var(--line);border-radius:var(--rad);padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:18px;letter-spacing:0.05em;text-align:center;margin-bottom:16px;cursor:pointer;user-select:all;" id="inviteCodeBox" title="Click to copy">
+        ${escAttr(d.invite_code)}
+      </div>
+      <div id="copyConfirm" style="text-align:center;font-size:12px;color:var(--ink-4);margin-bottom:16px;">Click the code to copy</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn primary" onclick="this.closest('[style*=fixed]').remove(); showScreen('users');">Done</button>
+      </div>
+    `;
+    document.getElementById('inviteCodeBox').addEventListener('click', () => {
+      navigator.clipboard.writeText(d.invite_code).then(() => {
+        document.getElementById('copyConfirm').textContent = 'Copied!';
+        setTimeout(() => { const el = document.getElementById('copyConfirm'); if (el) el.textContent = 'Click the code to copy'; }, 2000);
+      });
+    });
+  } else {
+    errEl.textContent = d.error || 'Failed to create user.';
+    errEl.style.display = '';
+  }
+}
+window.submitCreateUser = submitCreateUser;
+
+async function deleteUser(id, username) {
+  if (!confirm(`Remove ${username}? They will no longer be able to sign in.`)) return;
+  const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+  if (res.ok) {
+    showScreen('users');
+  } else {
+    const d = await res.json();
+    showNotice(d.error || 'Failed to remove user.', 'error');
+  }
+}
+window.deleteUser = deleteUser;
+
+async function regenerateInvite(userId, username) {
+  const res = await fetch(`/api/users/${userId}/invite`, { method: 'POST' });
+  const d = await res.json();
+  if (!res.ok) { showNotice(d.error || 'Failed to generate invite.', 'error'); return; }
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+  const setupUrl = `${window.location.origin}/setup`;
+  modal.innerHTML = `
+    <div style="background:var(--bg);border-radius:var(--rad-lg);padding:28px;max-width:420px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
+      <div style="font-size:16px;font-weight:600;margin-bottom:8px;">New invite code for ${username}</div>
+      <div style="font-size:13px;color:var(--ink-3);margin-bottom:16px;line-height:1.5;">
+        Have them go to <a href="${setupUrl}" target="_blank" style="color:var(--terra);">/setup</a> and enter this code. Expires in 7 days.
+      </div>
+      <div style="background:var(--bg-2);border:1px solid var(--line);border-radius:var(--rad);padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:18px;letter-spacing:0.05em;text-align:center;margin-bottom:16px;cursor:pointer;user-select:all;" id="reInviteCodeBox" title="Click to copy">
+        ${d.invite_code}
+      </div>
+      <div id="reCopyConfirm" style="text-align:center;font-size:12px;color:var(--ink-4);margin-bottom:16px;">Click the code to copy</div>
+      <div style="display:flex;justify-content:flex-end;">
+        <button class="btn primary" onclick="this.closest('[style*=fixed]').remove()">Done</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  document.getElementById('reInviteCodeBox').addEventListener('click', () => {
+    navigator.clipboard.writeText(d.invite_code).then(() => {
+      document.getElementById('reCopyConfirm').textContent = 'Copied!';
+      setTimeout(() => { const el = document.getElementById('reCopyConfirm'); if (el) el.textContent = 'Click the code to copy'; }, 2000);
+    });
+  });
+}
+window.regenerateInvite = regenerateInvite;
+
+async function openChangePasswordModal(userId, username, isSelf) {
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+  modal.innerHTML = `
+    <div style="background:var(--bg);border-radius:var(--rad-lg);padding:28px;max-width:380px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
+      <div style="font-size:16px;font-weight:600;margin-bottom:20px;">Change password · ${username}</div>
+      ${isSelf && !window.classifyIsAdmin ? `
+        <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:5px;">Current password</label>
+        <input id="cpCurrent" type="password"
+          style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--line);border-radius:var(--rad);font-size:14px;font-family:inherit;background:var(--bg-2);color:var(--ink);outline:none;margin-bottom:14px;">
+      ` : ''}
+      <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:5px;">New password</label>
+      <input id="cpNew" type="password" placeholder="At least 6 characters"
+        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--line);border-radius:var(--rad);font-size:14px;font-family:inherit;background:var(--bg-2);color:var(--ink);outline:none;margin-bottom:20px;">
+      <div id="cpError" style="display:none;color:var(--rose);font-size:12px;margin-bottom:10px;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn ghost" onclick="this.closest('[style*=fixed]').remove()">Cancel</button>
+        <button class="btn primary" onclick="submitChangePassword(${userId}, ${isSelf && !window.classifyIsAdmin})">Save</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  setTimeout(() => document.getElementById('cpCurrent')?.focus() || document.getElementById('cpNew')?.focus(), 50);
+}
+window.openChangePasswordModal = openChangePasswordModal;
+
+async function submitChangePassword(userId, requireCurrent) {
+  const newPass = document.getElementById('cpNew').value;
+  const body = { new_password: newPass };
+  if (requireCurrent) body.current_password = document.getElementById('cpCurrent')?.value || '';
+  const errEl = document.getElementById('cpError');
+
+  const res = await fetch(`/api/users/${userId}/password`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) {
+    document.querySelector('[style*=fixed]')?.remove();
+    showNotice('Password updated.');
+  } else {
+    const d = await res.json();
+    errEl.textContent = d.error || 'Failed to update password.';
+    errEl.style.display = '';
+  }
+}
+window.submitChangePassword = submitChangePassword;
+
 function renderSchoolConfigScreen() {
   const grades = [
     "Kindergarten",
@@ -1512,10 +1965,21 @@ async function renderGradeSettingsScreen() {
     custom_rules: data.custom_rules || null,
   };
 
-  // Prepare rules to display (custom or global)
-  const rulesProperties = hasCustomRules
-    ? data.custom_rules.properties
-    : config.properties;
+  // Prepare rules to display. When custom rules exist, merge with global so that
+  // any new global rules added after customization appear (disabled) rather than vanishing.
+  let rulesProperties;
+  if (hasCustomRules) {
+    const customByName = Object.fromEntries(
+      data.custom_rules.properties.map((p) => [p.name, p])
+    );
+    rulesProperties = config.properties.map(
+      (globalProp) => customByName[globalProp.name] || { ...globalProp, enabled: false }
+    );
+    // Keep the in-memory custom_rules in sync so toggle/weight handlers can find all properties
+    window.currentGradeSettings.custom_rules.properties = rulesProperties;
+  } else {
+    rulesProperties = config.properties;
+  }
 
   // Render weight sliders inline
   const renderWeightSlider = (prop) => {
@@ -1674,6 +2138,8 @@ async function renderStudentsScreen() {
     window.solverStatus = assignData.solver_status;
     window.solverElapsed = assignData.solver_elapsed;
     window.solverCombinations = assignData.solver_combinations;
+    window.assignmentConfig = assignData.assignment_config;
+    window.assignmentStale = assignData.assignment_stale || false;
   }
 
   const hasAssignments = assignments.length > 0;
@@ -1689,6 +2155,10 @@ async function renderStudentsScreen() {
   window.currentStudents = students;
   window.currentTeachers = data.teachers || [];
   window.currentAvailableTeachers = data.available_teachers || [];
+  // Cache grade size settings for use in stats (generateCompactBalanceStrip etc.)
+  window.gradeMinStudents = data.min_students;
+  window.gradeMaxStudents = data.max_students;
+  window.gradeEnforceClassSize = data.enforce_class_size === true;
   if (!window.hasUnsavedChanges) {
     window.currentAssignments = hasAssignments ? assignments : null;
     window.solverBaseline = hasAssignments ? assignData.solver_baseline : null;
@@ -1706,28 +2176,23 @@ async function renderStudentsScreen() {
             onmouseout="this.style.borderColor='var(--line)';this.style.color='var(--ink-3)';">?</button>
         </div>
         ${renderTeacherBar(window.currentAvailableTeachers)}
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;max-width:600px;margin-top:8px">
-          <div class="panel" style="cursor:pointer" data-mutates="true"
-            onclick="document.getElementById('grade-csv-input').click()"
-            ondragover="event.preventDefault(); this.style.borderColor='var(--terra)'"
-            ondragleave="this.style.borderColor=''"
-            ondrop="event.preventDefault(); this.style.borderColor=''; handleGradeCSVFile(event.dataTransfer.files[0])">
-            <div class="panel-b" style="text-align:center;padding:32px 16px">
-              <i data-lucide="upload" style="width:24px;height:24px;margin-bottom:10px;color:var(--ink-3)"></i>
-              <div style="font-weight:600;font-size:14px;margin-bottom:6px">Import CSV</div>
-              <div class="muted" style="font-size:12px">Drop a file or click to upload a student roster</div>
-            </div>
-          </div>
-          <div class="panel" style="cursor:pointer" onclick="openAddStudentModal()" data-mutates="true">
+        <div style="display:flex;gap:16px;max-width:600px;margin-top:8px;flex-wrap:wrap;">
+          <div class="panel" style="cursor:pointer;flex:1;min-width:180px;" onclick="openAddStudentModal()" data-mutates="true">
             <div class="panel-b" style="text-align:center;padding:32px 16px">
               <i data-lucide="user-plus" style="width:24px;height:24px;margin-bottom:10px;color:var(--ink-3)"></i>
               <div style="font-weight:600;font-size:14px;margin-bottom:6px">Add manually</div>
               <div class="muted" style="font-size:12px">Add students one at a time</div>
             </div>
           </div>
+          ${window.classifyIsAdmin ? `
+          <div class="panel" style="cursor:pointer;flex:1;min-width:180px;" onclick="showImportModal('schoolYear')" data-mutates="true">
+            <div class="panel-b" style="text-align:center;padding:32px 16px">
+              <i data-lucide="upload" style="width:24px;height:24px;margin-bottom:10px;color:var(--ink-3)"></i>
+              <div style="font-weight:600;font-size:14px;margin-bottom:6px">Import CSV</div>
+              <div class="muted" style="font-size:12px">Import all grades from a student roster</div>
+            </div>
+          </div>` : ''}
         </div>
-        <input id="grade-csv-input" type="file" accept=".csv" style="display:none" onchange="handleGradeCSVFile(this.files[0])">
-        <div id="grade-csv-error" style="margin-top:12px;font-size:12px;color:var(--rose)"></div>
       </div>
     `;
   }
@@ -1778,7 +2243,7 @@ async function renderStudentsScreen() {
           hasAssignments && assignData?.solver_status === "OPTIMAL"
             ? `
           <span style="color:var(--line-soft);">·</span>
-          <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--terra);font-weight:600;">
+          <span id="optimalBadge" style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--terra);font-weight:600;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <circle cx="12" cy="8" r="6"/>
               <path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>
@@ -1788,9 +2253,22 @@ async function renderStudentsScreen() {
         `
             : ""
         }
+        ${
+          hasAssignments && window.assignmentStale
+            ? `
+          <span style="color:var(--line-soft);">·</span>
+          <span style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--amber);font-weight:500;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+              <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+            </svg>
+            Student data changed since last run
+          </span>
+        `
+            : ""
+        }
         <div style="flex:1;min-width:8px;"></div>
         <button class="btn ghost" onclick="showScreen('grade-settings')" data-mutates="true"><i data-lucide="settings" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Settings</button>
-        <button class="btn ghost" onclick="showImportModal()" data-mutates="true"><i data-lucide="upload" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Re‑import</button>
         ${
           hasAssignments
             ? `<button class="btn ghost" onclick="exportAssignmentCSV()"><i data-lucide="download" style="width:13px;height:13px;display:inline-block;vertical-align:middle;margin-right:4px"></i>Export</button>`
@@ -1816,15 +2294,26 @@ async function renderStudentsScreen() {
             .map((p) => {
               const label =
                 p.display_name === "504 Plan" ? "504" : p.display_name;
-              const active = (window.assignmentFilterFlags || new Set()).has(
-                p.name,
-              );
+              const count = students.filter(
+                (s) => s[p.name] === true || s[p.name] === "true",
+              ).length;
+              if (count === 0) return "";
+              const active = (window.assignmentFilterFlags || new Set()).has(p.name);
               return `<button data-filter-flag="${p.name}" onclick="toggleAssignmentFilter('${p.name}')"
-              style="height:30px;padding:0 10px;font-size:11px;border:1px solid var(--line);border-radius:var(--rad);cursor:pointer;transition:all 0.1s;background:${active ? "var(--ink)" : "transparent"};color:${active ? "#fff" : "var(--ink-3)"};">${label}</button>`;
+              style="height:30px;padding:0 10px;font-size:11px;border:1px solid var(--line);border-radius:var(--rad);cursor:pointer;transition:all 0.1s;background:${active ? "var(--ink)" : "transparent"};color:${active ? "#fff" : "var(--ink-3)"};">${label} <span style="opacity:0.6;font-size:10px;">${count}</span></button>`;
             })
             .join("")}
-          <button data-filter-flag="no_friends" onclick="toggleAssignmentFilter('no_friends')"
-            style="height:30px;padding:0 10px;font-size:11px;border:1px solid var(--line);border-radius:var(--rad);cursor:pointer;transition:all 0.1s;background:${(window.assignmentFilterFlags || new Set()).has('no_friends') ? "var(--ink)" : "transparent"};color:${(window.assignmentFilterFlags || new Set()).has('no_friends') ? "#fff" : "var(--ink-3)"};">No friends</button>
+          ${(() => {
+            const noFriendsCount = assignments.filter((s) => {
+              const hasFriendsDefined = s.friends && s.friends.length > 0 && s.friends !== "[]";
+              const hasFriendInClass = s.has_friend_in_class === 1 || s.has_friend_in_class === true;
+              return hasFriendsDefined && !hasFriendInClass;
+            }).length;
+            if (noFriendsCount === 0) return "";
+            const active = (window.assignmentFilterFlags || new Set()).has('no_friends');
+            return `<button data-filter-flag="no_friends" onclick="toggleAssignmentFilter('no_friends')"
+              style="height:30px;padding:0 10px;font-size:11px;border:1px solid var(--line);border-radius:var(--rad);cursor:pointer;transition:all 0.1s;background:${active ? "var(--ink)" : "transparent"};color:${active ? "#fff" : "var(--ink-3)"};">No friends <span style="opacity:0.6;font-size:10px;">${noFriendsCount}</span></button>`;
+          })()}
           <button id="clearFiltersBtn" onclick="clearAssignmentFilters()"
             style="display:${window.assignmentSearch || (window.assignmentFilterFlags && window.assignmentFilterFlags.size > 0) ? "" : "none"};height:30px;padding:0 10px;font-size:11px;border:1px solid var(--line);border-radius:var(--rad);cursor:pointer;background:transparent;color:var(--rose);">× Clear</button>
           <div style="flex:1;"></div>
@@ -2260,6 +2749,11 @@ async function renderResultsScreen() {
   window.currentTeachers = data.teachers || [];
   window.currentAvailableTeachers = data.available_teachers || [];
 
+  // Cache grade size settings for use in stats (generateCompactBalanceStrip etc.)
+  window.gradeMinStudents = data.min_students;
+  window.gradeMaxStudents = data.max_students;
+  window.gradeEnforceClassSize = data.enforce_class_size === true;
+
   console.log("DEBUG renderResultsScreen - hasAssignments:", hasAssignments);
   console.log("DEBUG renderResultsScreen - assignData:", assignData);
   console.log(
@@ -2329,6 +2823,22 @@ async function toggleBalanceStatsView() {
   await showScreen("students");
 }
 
+// Parse incompatible names from any storage format:
+// - comma-separated string: "Ryan Lewis, John Smith"
+// - Python list string: "['Ryan Lewis', 'John Smith']"
+// - actual array: ["Ryan Lewis"]
+function parseIncompatNames(incompatible) {
+  if (!incompatible) return [];
+  if (Array.isArray(incompatible)) return incompatible.map((n) => String(n).trim()).filter(Boolean);
+  const s = String(incompatible).trim();
+  if (!s || s === "[]") return [];
+  if (s.startsWith("[")) {
+    const matches = s.match(/['"]([^'"]+)['"]/g);
+    if (matches) return matches.map((m) => m.replace(/['"]/g, "").trim()).filter(Boolean);
+  }
+  return s.split(",").map((n) => n.trim()).filter(Boolean);
+}
+
 // Generate minimal balance statistics view
 function generateMinimalStats(
   propertiesToAnalyze,
@@ -2363,12 +2873,25 @@ function generateMinimalStats(
   // Check for incompatibilities
   const allStudents = classesList.flatMap((cls) => cls.students);
   const studentsWithIncompat = allStudents.filter(
-    (s) => s.incompatible && s.incompatible.length > 0,
+    (s) => parseIncompatNames(s.incompatible).length > 0,
   );
   if (studentsWithIncompat.length > 0) {
+    const violationPairs = new Set();
+    classesList.forEach((cls) => {
+      const nameSet = new Set(cls.students.map((s) => s.name));
+      cls.students.forEach((student) => {
+        parseIncompatNames(student.incompatible).forEach((incompName) => {
+          if (nameSet.has(incompName)) {
+            violationPairs.add([student.name, incompName].sort().join("|||"));
+          }
+        });
+      });
+    });
     hardConstraints.push({
       name: "Incompatibility separation",
       isMandatory: true,
+      violated: violationPairs.size > 0,
+      violationCount: violationPairs.size,
       level: { label: "Mandatory requirements", order: 0 },
     });
   }
@@ -2384,9 +2907,6 @@ function generateMinimalStats(
       level: { label: "Mandatory requirements", order: 0 },
     });
   }
-
-  // Check for class size constraint (if enforce_class_size is true)
-  // Note: This would need to be passed from the grade data
 
   // Process each property and calculate its optimization percentage
   const propertyStats = propertiesToAnalyze
@@ -2488,6 +3008,36 @@ function generateMinimalStats(
     })
     .filter(Boolean);
 
+  // Add class size — hard goes to mandatory, soft goes to property stats
+  const _csMin = window.gradeMinStudents;
+  const _csMax = window.gradeMaxStudents;
+  const _csEnforce = window.gradeEnforceClassSize;
+  if (_csMin != null && _csMax != null) {
+    const _sizeViolations = classesList.filter(
+      (cls) => cls.students.length < _csMin || cls.students.length > _csMax,
+    ).length;
+    if (_csEnforce) {
+      hardConstraints.push({
+        name: `Class size (${_csMin}–${_csMax})`,
+        isMandatory: true,
+        violated: _sizeViolations > 0,
+        violationCount: _sizeViolations,
+        level: { label: "Mandatory requirements", order: 0 },
+      });
+    } else {
+      const _pct = classesList.length > 0
+        ? ((classesList.length - _sizeViolations) / classesList.length) * 100
+        : 100;
+      propertyStats.push({
+        name: `Class size (${_csMin}–${_csMax})`,
+        level: { label: "Mild", order: 4 },
+        optimality: _pct,
+        isMandatory: false,
+        weightChanged: false,
+      });
+    }
+  }
+
   // Group by constraint level
   const grouped = {};
 
@@ -2527,7 +3077,14 @@ function generateMinimalStats(
           if (!isMandatory) {
             if (optimality < 70) barColor = "var(--amber)";
             if (optimality < 50) barColor = "var(--rose)";
+          } else if (stat.violated) {
+            barColor = "var(--rose)";
           }
+
+          const mandatoryLabel = stat.violated
+            ? `✗ ${stat.violationCount} violation${stat.violationCount !== 1 ? "s" : ""}`
+            : "✓ Met";
+          const mandatoryColor = stat.violated ? "var(--rose)" : "var(--terra)";
 
           return `
         <div style="margin-bottom: 12px;">
@@ -2536,8 +3093,8 @@ function generateMinimalStats(
               <span style="font-size: 13px; font-weight: 500; color: var(--ink);">${stat.name}</span>
               ${stat.weightChanged ? '<span title="Weight changed since assignment" style="display: inline-flex; align-items: center; justify-content: center; width: 14px; height: 14px; border-radius: 50%; background: var(--amber-soft); color: var(--amber-ink); font-size: 9px; font-weight: 700;">!</span>' : ""}
             </div>
-            <span style="font-size: 11px; font-family: var(--t-mono); color: ${isMandatory ? "var(--terra)" : "var(--ink-3)"}; font-weight: 600;">
-              ${isMandatory ? "✓ Met" : Math.round(optimality) + "% optimal"}
+            <span style="font-size: 11px; font-family: var(--t-mono); color: ${isMandatory ? mandatoryColor : "var(--ink-3)"}; font-weight: 600;">
+              ${isMandatory ? mandatoryLabel : Math.round(optimality) + "% optimal"}
             </span>
           </div>
           <div style="height: 6px; background: var(--bg-2); border-radius: 3px; overflow: hidden;">
@@ -2632,12 +3189,25 @@ function generateCompactBalanceStrip(
   // Check for incompatibilities
   const allStudents = classesList.flatMap((cls) => cls.students);
   const studentsWithIncompat = allStudents.filter(
-    (s) => s.incompatible && s.incompatible.length > 0,
+    (s) => parseIncompatNames(s.incompatible).length > 0,
   );
   if (studentsWithIncompat.length > 0) {
+    const violationPairs = new Set();
+    classesList.forEach((cls) => {
+      const nameSet = new Set(cls.students.map((s) => s.name));
+      cls.students.forEach((student) => {
+        parseIncompatNames(student.incompatible).forEach((incompName) => {
+          if (nameSet.has(incompName)) {
+            violationPairs.add([student.name, incompName].sort().join("|||"));
+          }
+        });
+      });
+    });
     hardConstraints.push({
       name: "Incompatibility",
       isMandatory: true,
+      violated: violationPairs.size > 0,
+      violationCount: violationPairs.size,
       level: { label: "MANDATORY", order: 0 },
     });
   }
@@ -2751,6 +3321,35 @@ function generateCompactBalanceStrip(
     })
     .filter(Boolean);
 
+  // Add class size — hard goes to mandatory, soft goes to property stats
+  const csMin = window.gradeMinStudents;
+  const csMax = window.gradeMaxStudents;
+  const csEnforce = window.gradeEnforceClassSize;
+  if (csMin != null && csMax != null) {
+    const sizeViolations = classesList.filter(
+      (cls) => cls.students.length < csMin || cls.students.length > csMax,
+    ).length;
+    if (csEnforce) {
+      hardConstraints.push({
+        name: `Class size (${csMin}–${csMax})`,
+        isMandatory: true,
+        violated: sizeViolations > 0,
+        violationCount: sizeViolations,
+        level: { label: "MANDATORY", order: 0 },
+      });
+    } else {
+      const pct = classesList.length > 0
+        ? ((classesList.length - sizeViolations) / classesList.length) * 100
+        : 100;
+      propertyStats.push({
+        name: `Class size (${csMin}–${csMax})`,
+        level: { label: "MEDIUM", order: 3 },
+        optimality: pct,
+        isMandatory: false,
+      });
+    }
+  }
+
   // Group by constraint level
   const grouped = {};
 
@@ -2771,6 +3370,24 @@ function generateCompactBalanceStrip(
     }
     grouped[levelLabel].stats.push(stat);
   });
+
+  // Add newly-enabled properties not present in the historical config
+  if (assignmentConfig && typeof config !== "undefined") {
+    const historicalNames = new Set(
+      (assignmentConfig.properties || [])
+        .filter((p) => p.enabled && p.type !== "relationship")
+        .map((p) => p.name)
+    );
+    const newProps = (config.properties || []).filter(
+      (p) => p.enabled && p.type !== "relationship" && !historicalNames.has(p.name)
+    );
+    if (newProps.length > 0) {
+      if (!grouped["NEW"]) grouped["NEW"] = { order: 99, stats: [] };
+      newProps.forEach((p) => {
+        grouped["NEW"].stats.push({ name: p.display_name, isNA: true });
+      });
+    }
+  }
 
   // Add friendship stats
   if (allStudents.some((s) => "has_friend_in_class" in s)) {
@@ -2811,21 +3428,41 @@ function generateCompactBalanceStrip(
             stat.optimality !== undefined ? stat.optimality : 100;
           const isMandatory = stat.isMandatory;
 
+          // N/A row for newly-enabled properties
+          if (stat.isNA) {
+            return `
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-bottom: 1px solid var(--line-soft);">
+            <span style="font-size: 12px; color: var(--ink-3);">${stat.name}</span>
+            <span style="font-size: 11px; color: var(--ink-4); font-family: var(--t-mono);">N/A</span>
+          </div>
+        `;
+          }
+
           // Status indicator
           let status = "";
           let statusColor = "var(--ink-3)";
           if (isMandatory) {
-            status = "✓ Met";
-            statusColor = "var(--terra)";
+            if (stat.violated) {
+              status = `✗ ${stat.violationCount}`;
+              statusColor = "var(--rose)";
+            } else {
+              status = "✓ Met";
+              statusColor = "var(--sage)";
+            }
           } else {
             const rounded = Math.round(optimality);
-            status = `${rounded}%`;
-            if (optimality >= 90) {
-              statusColor = "var(--terra)";
-            } else if (optimality >= 70) {
-              statusColor = "var(--amber)";
+            if (rounded === 100) {
+              status = "✓ Perfect";
+              statusColor = "var(--sage)";
             } else {
-              statusColor = "var(--rose)";
+              status = `${rounded}%`;
+              if (optimality >= 85) {
+                statusColor = "var(--sage)";
+              } else if (optimality >= 60) {
+                statusColor = "var(--amber)";
+              } else {
+                statusColor = "var(--terra)";
+              }
             }
           }
 
@@ -3230,28 +3867,17 @@ function calculateRelationshipStats(classesList) {
   // Incompatibility verification stats
   let incompatibilityHTML = "";
   const studentsWithIncompat = allStudents.filter(
-    (s) => s.incompatible && s.incompatible.length > 0,
+    (s) => parseIncompatNames(s.incompatible).length > 0,
   );
 
   if (studentsWithIncompat.length > 0) {
     // Build unique pairs to avoid double-counting mutual incompatibilities
     const uniquePairs = new Set();
     allStudents.forEach((student) => {
-      if (student.incompatible) {
-        const incompatList =
-          typeof student.incompatible === "string"
-            ? student.incompatible
-                .split(",")
-                .map((n) => n.trim())
-                .filter((n) => n)
-            : student.incompatible || [];
-
-        incompatList.forEach((incompName) => {
-          // Create a canonical pair key (alphabetically sorted to avoid duplicates)
-          const pair = [student.name, incompName].sort().join("|||");
-          uniquePairs.add(pair);
-        });
-      }
+      parseIncompatNames(student.incompatible).forEach((incompName) => {
+        const pair = [student.name, incompName].sort().join("|||");
+        uniquePairs.add(pair);
+      });
     });
 
     // Check for violations
@@ -3262,29 +3888,19 @@ function calculateRelationshipStats(classesList) {
       const nameSet = new Set(studentsInClass.map((s) => s.name));
 
       studentsInClass.forEach((student) => {
-        if (student.incompatible) {
-          const incompatList =
-            typeof student.incompatible === "string"
-              ? student.incompatible
-                  .split(",")
-                  .map((n) => n.trim())
-                  .filter((n) => n)
-              : student.incompatible;
-
-          incompatList.forEach((incompName) => {
-            if (nameSet.has(incompName)) {
-              const pair = [student.name, incompName].sort().join("|||");
-              if (!violationPairs.has(pair)) {
-                violationPairs.add(pair);
-                violations.push({
-                  class: cls.number,
-                  student1: student.name,
-                  student2: incompName,
-                });
-              }
+        parseIncompatNames(student.incompatible).forEach((incompName) => {
+          if (nameSet.has(incompName)) {
+            const pair = [student.name, incompName].sort().join("|||");
+            if (!violationPairs.has(pair)) {
+              violationPairs.add(pair);
+              violations.push({
+                class: cls.number,
+                student1: student.name,
+                student2: incompName,
+              });
             }
-          });
-        }
+          }
+        });
       });
     });
 
@@ -3529,7 +4145,7 @@ function renderAssignmentResults(assignments, numClasses, assignData) {
     ${
       hasBaseline
         ? `
-      <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 16px; background: ${window.hasUnsavedChanges ? "var(--amber-soft, var(--bg-2))" : "var(--bg-2)"}; border-radius: var(--rad); border: 1px solid ${window.hasUnsavedChanges ? "var(--amber, var(--line-soft))" : "var(--line-soft)"};">
+      <div id="editModeBar" style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding: 12px 16px; background: ${window.hasUnsavedChanges ? "var(--amber-soft, var(--bg-2))" : "var(--bg-2)"}; border-radius: var(--rad); border: 1px solid ${window.hasUnsavedChanges ? "var(--amber, var(--line-soft))" : "var(--line-soft)"};">
         <div style="flex: 1; display: flex; align-items: center; gap: 12px;">
           <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;" data-mutates="true">
             <input type="checkbox" id="editModeToggle" ${window.editMode ? "checked" : ""} onchange="toggleEditMode(this.checked)" style="width: 16px; height: 16px; cursor: pointer;" data-mutates="true">
@@ -3537,8 +4153,8 @@ function renderAssignmentResults(assignments, numClasses, assignData) {
           </label>
           ${
             window.hasUnsavedChanges && !window.editMode
-              ? `<span style="font-size: 11px; color: var(--amber, var(--ink-3)); font-weight: 500;">● Unsaved changes</span>`
-              : `<span style="font-size: 11px; color: var(--ink-3);">Enable to manually adjust class assignments</span>`
+              ? `<span id="editModeStatus" style="font-size: 11px; color: var(--amber, var(--ink-3)); font-weight: 500;">● Unsaved changes</span>`
+              : `<span id="editModeStatus" style="font-size: 11px; color: var(--ink-3);">Enable to manually adjust class assignments</span>`
           }
         </div>
         <div id="editModeActions" style="display: ${window.editMode || window.hasUnsavedChanges ? "flex" : "none"}; gap: 8px;">
@@ -3594,112 +4210,182 @@ function renderAssignmentResults(assignments, numClasses, assignData) {
       <!-- Balance Stats Box (Class 0) -->
       ${compactBalanceStrip}
 
-      ${classesList
-        .map(
-          (cls) => `
-        <div class="panel" style="flex: 0 0 260px;">
-          <div class="panel-h">
-            <div>
-              <h3 style="cursor:pointer;" title="Click to rename" onclick="startClassNameEdit(this, ${cls.number})">${window.classNames[cls.number] || `Class ${cls.number}`}</h3>
-              <div class="teacher-label" data-class-number="${cls.number}" onclick="startTeacherEdit(this, ${cls.number})" style="font-size:11px; color:${window.currentTeachers[cls.number - 1] ? "var(--ink-3)" : "var(--ink-4)"}; cursor:pointer; margin-top:1px;">
-                ${window.currentTeachers[cls.number - 1] || "+ Add teacher"}
-              </div>
-            </div>
-            <span class="sub class-count">${cls.students.length} students</span>
-          </div>
-          <div class="panel-b class-drop-zone" data-class-number="${cls.number}" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" style="padding: 0;">
-            <div class="student-list">
-              ${cls.students
-                .map((s) => {
-                  const initials = s.name
-                    .split(" ")
-                    .map((n) => n[0])
-                    .join("");
-                  return `
-                  <div class="student-row ${window.editMode ? "draggable-student" : ""}"
-                       data-student-name="${s.name}"
-                       data-current-class="${cls.number}"
-                       draggable="${window.editMode}"
-                       ${window.editMode ? 'ondragstart="handleDragStart(event)" ondragend="handleDragEnd(event)"' : ""}
-                       onclick="showStudentDetail('${s.name.replace(/'/g, "\\'")}')"
-                       onmouseenter="showAssignmentHighlight('${s.name.replace(/'/g, "\\'")}')"
-                       onmouseleave="clearAssignmentHighlight()"
-                       style="display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line-soft); cursor: ${window.editMode ? "move" : "pointer"};">
-                    ${window.editMode ? '<div style="color: var(--ink-4); font-size: 14px; line-height: 22px; opacity: 0.6; align-self: center;">⋮⋮</div>' : ""}
-                    <div class="avatar ${s.gender}" style="align-self: center;">${initials}</div>
-                    <div style="flex: 1; min-width: 0;">
-                      <div class="sn">${s.name}</div>
-                      ${(() => {
-                        const catProps = (config.properties || []).filter(
-                          (p) =>
-                            p.enabled &&
-                            p.type !== "boolean" &&
-                            p.type !== "relationship" &&
-                            p.type !== "hard_toggle" &&
-                            p.name !== "gender",
-                        );
-                        const chips = catProps
-                          .filter(
-                            (p) =>
-                              s[p.name] &&
-                              s[p.name] !== "m" &&
-                              s[p.name] !== "neutral",
-                          )
-                          .map((p) => {
-                            const v = s[p.name];
-                            const isHigh = v === "h" || v === "high";
-                            const isLow = v === "l" || v === "low";
-
-                            if (!isHigh && !isLow) return "";
-
-                            // Abbreviation mapping
-                            const abbrev = {
-                              behavior: "BEH",
-                              independence: "IND",
-                              math: "MATH",
-                              reading: "READ"
-                            };
-                            const label = abbrev[p.name] || p.display_name.slice(0, 4).toUpperCase();
-
-                            // Behavior: red=disruptive, green=cooperative
-                            // Independence: green=independent, red=dependent
-                            // Academic: green=high, red=low
-                            const invertedProps = ["behavior"];
-                            const isInverted = invertedProps.includes(p.name);
-
-                            let bg;
-                            if (isHigh) {
-                              bg = isInverted ? "var(--rose-soft)" : "var(--sage-soft)";
-                            } else {
-                              bg = isInverted ? "var(--sage-soft)" : "var(--rose-soft)";
-                            }
-
-                            return `<span class="chip" style="font-size:8px;padding:1px 4px;background:${bg};">${label}</span>`;
-                          })
-                          .join("");
-                        return chips
-                          ? `<div class="student-meta-chips" style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px;">${chips}</div>`
-                          : "";
-                      })()}
-                    </div>
-                    <div class="student-flag-chips" style="display:flex; gap:3px; flex-shrink:0;">
-                      ${s.iep ? '<span class="chip" style="font-size: 9px;">IEP</span>' : ""}
-                      ${s["504"] ? '<span class="chip" style="font-size: 9px;">504</span>' : ""}
-                      ${s.esl ? '<span class="chip" style="font-size: 9px;">ESL</span>' : ""}
-                      ${s.gate ? '<span class="chip" style="font-size: 9px;">GATE</span>' : ""}
-                    </div>
-                  </div>
-                `;
-                })
-                .join("")}
-            </div>
-          </div>
-        </div>
-      `,
-        )
-        .join("")}
+      ${renderClassCardsHTML(classesList)}
     </div>
   `;
+}
+
+// Render class cards HTML (extracted for targeted refresh after drag/drop)
+function renderClassCardsHTML(classesList) {
+  return classesList
+    .map(
+      (cls) => `
+    <div class="panel" style="flex: 0 0 260px;">
+      <div class="panel-h">
+        <div>
+          <h3 style="cursor:pointer;" title="Click to rename" onclick="startClassNameEdit(this, ${cls.number})">${window.classNames[cls.number] || `Class ${cls.number}`}</h3>
+          <div class="teacher-label" data-class-number="${cls.number}" onclick="startTeacherEdit(this, ${cls.number})" style="font-size:11px; color:${window.currentTeachers[cls.number - 1] ? "var(--ink-3)" : "var(--ink-4)"}; cursor:pointer; margin-top:1px;">
+            ${window.currentTeachers[cls.number - 1] || "+ Add teacher"}
+          </div>
+        </div>
+        <span class="sub class-count">${cls.students.length} students</span>
+      </div>
+      <div class="panel-b class-drop-zone" data-class-number="${cls.number}" ondrop="handleDrop(event)" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" style="padding: 0;">
+        <div class="student-list">
+          ${cls.students
+            .map((s) => {
+              const initials = s.name
+                .split(" ")
+                .map((n) => n[0])
+                .join("");
+              return `
+              <div class="student-row ${window.editMode ? "draggable-student" : ""}"
+                   data-student-name="${s.name}"
+                   data-current-class="${cls.number}"
+                   draggable="${window.editMode}"
+                   ${window.editMode ? 'ondragstart="handleDragStart(event)" ondragend="handleDragEnd(event)"' : ""}
+                   onclick="showStudentDetail('${s.name.replace(/'/g, "\\'")}')"
+                   onmouseenter="showAssignmentHighlight('${s.name.replace(/'/g, "\\'")}')"
+                   onmouseleave="clearAssignmentHighlight()"
+                   style="display: flex; align-items: flex-start; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line-soft); cursor: ${window.editMode ? "move" : "pointer"};">
+                ${window.editMode ? '<div style="color: var(--ink-4); font-size: 14px; line-height: 22px; opacity: 0.6; align-self: center;">⋮⋮</div>' : ""}
+                <div class="avatar ${s.gender}" style="align-self: center;">${initials}</div>
+                <div style="flex: 1; min-width: 0;">
+                  <div class="sn">${s.name}</div>
+                  ${(() => {
+                    const catProps = (config.properties || []).filter(
+                      (p) =>
+                        p.enabled &&
+                        p.type !== "boolean" &&
+                        p.type !== "relationship" &&
+                        p.type !== "hard_toggle" &&
+                        p.name !== "gender",
+                    );
+                    const chips = catProps
+                      .filter(
+                        (p) =>
+                          s[p.name] &&
+                          s[p.name] !== "m" &&
+                          s[p.name] !== "neutral",
+                      )
+                      .map((p) => {
+                        const v = s[p.name];
+                        const isHigh = v === "h" || v === "high";
+                        const isLow = v === "l" || v === "low";
+                        if (!isHigh && !isLow) return "";
+                        const abbrev = { behavior: "BEH", independence: "IND", math: "MATH", reading: "READ" };
+                        const label = abbrev[p.name] || p.display_name.slice(0, 4).toUpperCase();
+                        const invertedProps = ["behavior"];
+                        const isInverted = invertedProps.includes(p.name);
+                        let bg;
+                        if (isHigh) {
+                          bg = isInverted ? "var(--rose-soft)" : "var(--sage-soft)";
+                        } else {
+                          bg = isInverted ? "var(--sage-soft)" : "var(--rose-soft)";
+                        }
+                        return `<span class="chip" style="font-size:8px;padding:1px 4px;background:${bg};">${label}</span>`;
+                      })
+                      .join("");
+                    return chips
+                      ? `<div class="student-meta-chips" style="display:flex;gap:3px;flex-wrap:wrap;margin-top:2px;">${chips}</div>`
+                      : "";
+                  })()}
+                </div>
+                <div class="student-flag-chips" style="display:flex; gap:3px; flex-shrink:0;">
+                  ${s.iep ? '<span class="chip" style="font-size: 9px;">IEP</span>' : ""}
+                  ${s["504"] ? '<span class="chip" style="font-size: 9px;">504</span>' : ""}
+                  ${s.esl ? '<span class="chip" style="font-size: 9px;">ESL</span>' : ""}
+                  ${s.gate ? '<span class="chip" style="font-size: 9px;">GATE</span>' : ""}
+                </div>
+              </div>
+            `;
+            })
+            .join("")}
+        </div>
+      </div>
+    </div>
+  `,
+    )
+    .join("");
+}
+
+// Targeted refresh of just the class cards container — avoids full page re-render and server fetch
+function refreshClassCardsContainer() {
+  console.time("refreshClassCards");
+  const assignments = window.currentAssignments || [];
+  const numClasses = window.numClasses || 0;
+
+  const classesList = Array.from({ length: numClasses }, (_, i) => ({
+    number: i + 1,
+    students: assignments.filter((a) => a.assigned_class === i + 1),
+  }));
+
+  const configToUse = window.assignmentConfig || config;
+  const propertiesToAnalyze = configToUse.properties?.filter(
+    (p) => p.enabled && p.type !== "relationship",
+  ) || [];
+
+  console.time("generateStats");
+  const compactBalanceStrip = generateCompactBalanceStrip(
+    propertiesToAnalyze,
+    classesList,
+    configToUse,
+    window.assignmentConfig,
+  );
+  console.timeEnd("generateStats");
+
+  console.time("renderHTML");
+  const html = compactBalanceStrip + renderClassCardsHTML(classesList);
+  console.timeEnd("renderHTML");
+
+  const container = document.getElementById("classCardsContainer");
+  console.time("setInnerHTML");
+  if (container) {
+    container.innerHTML = html;
+    renderIcons();
+  }
+  console.timeEnd("setInnerHTML");
+
+  // Update edit mode bar styling to reflect unsaved changes
+  const editBar = document.getElementById("editModeBar");
+  if (editBar && window.hasUnsavedChanges) {
+    editBar.style.background = "var(--amber-soft, var(--bg-2))";
+    editBar.style.borderColor = "var(--amber, var(--line-soft))";
+    const statusSpan = document.getElementById("editModeStatus");
+    if (statusSpan) {
+      statusSpan.style.color = "var(--amber, var(--ink-3))";
+      statusSpan.style.fontWeight = "500";
+      statusSpan.textContent = "● Unsaved changes";
+    }
+  }
+
+  // Show actions and update button states
+  const actionsDiv = document.getElementById("editModeActions");
+  if (actionsDiv) {
+    actionsDiv.style.display = window.editMode || window.hasUnsavedChanges ? "flex" : "none";
+    const saveBtn = actionsDiv.querySelector("button.primary");
+    const revertBtn = actionsDiv.querySelector("button.ghost");
+    if (saveBtn) saveBtn.disabled = !window.hasUnsavedChanges;
+    if (revertBtn) revertBtn.disabled = !window.hasUnsavedChanges;
+  }
+
+  applyAssignmentFilters();
+
+  // Update "No friends" pill count
+  const noFriendsBtn = document.querySelector('[data-filter-flag="no_friends"]');
+  if (noFriendsBtn) {
+    const count = (window.currentAssignments || []).filter((s) => {
+      const hasFriendsDefined = s.friends && s.friends.length > 0 && s.friends !== "[]";
+      const hasFriendInClass = s.has_friend_in_class === 1 || s.has_friend_in_class === true;
+      return hasFriendsDefined && !hasFriendInClass;
+    }).length;
+    if (count === 0) {
+      noFriendsBtn.style.display = "none";
+    } else {
+      noFriendsBtn.style.display = "";
+      noFriendsBtn.innerHTML = `No friends <span style="opacity:0.6;font-size:10px;">${count}</span>`;
+    }
+  }
 }
 
 // Render no assignments state
@@ -3896,28 +4582,496 @@ async function runAssignment() {
   }
 }
 
-// Modal functions
-function showImportModal() {
-  document.getElementById("importModalBody").innerHTML = `
-    <div
-      id="import-modal-dropzone"
-      style="border:2px dashed var(--line-soft);border-radius:8px;padding:40px;text-align:center;cursor:pointer;color:var(--ink-3);font-size:13px;margin-bottom:16px"
-      onclick="document.getElementById('import-modal-file').click()"
-      ondragover="event.preventDefault(); this.style.borderColor='var(--terra)'"
-      ondragleave="this.style.borderColor='var(--line-soft)'"
-      ondrop="event.preventDefault(); this.style.borderColor='var(--line-soft)'; _handleImportModalFile(event.dataTransfer.files[0])">
-      <i data-lucide="upload" style="width:22px;height:22px;margin-bottom:10px;color:var(--ink-3)"></i>
-      <div style="font-weight:600;font-size:14px;margin-bottom:6px">Drop CSV or click to upload</div>
-      <div style="font-size:12px;color:var(--rose)">This will overwrite all current students and assignments for this grade</div>
-    </div>
-    <input id="import-modal-file" type="file" accept=".csv" style="display:none" onchange="_handleImportModalFile(this.files[0])">
-    <div style="background:var(--bg-2);border-radius:6px;padding:12px 14px;font-size:11px;color:var(--ink-3);line-height:1.7;font-family:var(--t-mono)">
-      name, grade, gender, math, reading, behavior, independence, iep, 504, esl, gate, friends, incompatible
-    </div>
-    <div id="import-modal-status" style="margin-top:12px;font-size:12px"></div>
-  `;
-  document.getElementById("importModal").classList.add("open");
+// ─── Import wizard ────────────────────────────────────────────────────────────
+
+const _IMP_FIELDS = [
+  { key:'name',         label:'Student name',   type:'name',   required:true },
+  { key:'gender',       label:'Gender',         type:'choice', options:[{v:'g',label:'Girl'},{v:'b',label:'Boy'}] },
+  { key:'behavior',     label:'Behavior',       type:'choice', options:[{v:'cooperative',label:'Cooperative'},{v:'neutral',label:'Neutral'},{v:'disruptive',label:'Disruptive'}] },
+  { key:'independence', label:'Independence',   type:'choice', options:[{v:'high',label:'High'},{v:'neutral',label:'Neutral'},{v:'low',label:'Low'}] },
+  { key:'iep',          label:'IEP',            type:'boolean' },
+  { key:'504',          label:'504 Plan',       type:'boolean' },
+  { key:'esl',          label:'ESL / ELL',      type:'boolean' },
+  { key:'gate',         label:'GATE / Gifted',  type:'boolean' },
+  { key:'math',         label:'Math level',     type:'choice', options:[{v:'h',label:'High'},{v:'m',label:'Medium'},{v:'l',label:'Low'}] },
+  { key:'reading',      label:'Reading level',  type:'choice', options:[{v:'h',label:'High'},{v:'m',label:'Medium'},{v:'l',label:'Low'}] },
+  { key:'friends',      label:'Friends',        type:'text' },
+  { key:'incompatible', label:'Separate from',  type:'text' },
+];
+
+const _IMP_COL_PATTERNS = {
+  name:         ['name','student','student name','full name','student_name','fullname','legal name','last, first','first last'],
+  grade:        ['grade','grade level','homeroom','class','gradelevel'],
+  gender:       ['gender','sex','gender identity'],
+  behavior:     ['behavior','behaviour','conduct','beh','behavior code','beh code','behavioral'],
+  independence: ['independence','independent','indep','self-directed','self directed'],
+  iep:          ['iep','special ed','sped','special education','spec ed','individualized education'],
+  '504':        ['504','504 plan','section 504'],
+  esl:          ['esl','ell','english learner','english language','language learner','english language learner'],
+  gate:         ['gate','gifted','tag','talented','gate/gifted','gifted and talented'],
+  math:         ['math','mathematics','math level','math_level','math perf','math performance','math score','math achievement'],
+  reading:      ['reading','read','ela','reading level','reading_level','reading perf','reading score','literacy','reading achievement'],
+  friends:      ['friends','friend','friend list','requests with','friend_requests','request','friend request','friend requests'],
+  incompatible: ['incompatible','separate','cannot be with','keep apart','conflict','do not place','no with','keep separate'],
+};
+
+function _impSuggest(field, raw) {
+  const v = (raw == null ? '' : String(raw)).toLowerCase().trim();
+  if (field.type === 'boolean') {
+    if (['y','yes','1','true','x','✓'].includes(v)) return 'true';
+    if (['n','no','0','false','-','none',''].includes(v)) return 'false';
+    return null;
+  }
+  if (field.type === 'choice') {
+    const k = field.key;
+    if (k === 'gender') {
+      if (['f','female','girl','g','woman','w'].includes(v)) return 'g';
+      if (['m','male','boy','b','man'].includes(v)) return 'b';
+    } else if (k === 'behavior') {
+      if (['cooperative','c','good','positive','1','low concern','low','never'].includes(v)) return 'cooperative';
+      if (['neutral','n','2','average','typical','moderate','mod','sometimes','occasional'].includes(v)) return 'neutral';
+      if (['disruptive','d','challenging','problematic','bad','3','concern','high concern','high','difficult','frequent','always'].includes(v)) return 'disruptive';
+    } else if (k === 'independence') {
+      if (['high','h','3','independent','very independent','self-directed','self directed'].includes(v)) return 'high';
+      if (['neutral','n','2','average','typical','moderate','some support'].includes(v)) return 'neutral';
+      if (['low','l','1','dependent','needs support','supported','high support'].includes(v)) return 'low';
+    } else if (k === 'math' || k === 'reading') {
+      if (['h','high','3','advanced','above','above grade','proficient+','exceeds','exceeds standards','4'].includes(v)) return 'h';
+      if (['m','medium','mid','2','proficient','on grade','grade level','on','meets','meets standards'].includes(v)) return 'm';
+      if (['l','low','1','basic','below','below grade','needs improvement','ni','approaching','does not meet','approaching standards'].includes(v)) return 'l';
+    }
+  }
+  return null;
 }
+
+function _impAutoDetect(csvColumns) {
+  const lc = csvColumns.map(c => c.toLowerCase().trim());
+  const mappings = {};
+  for (const [field, patterns] of Object.entries(_IMP_COL_PATTERNS)) {
+    for (const pat of patterns) {
+      const idx = lc.indexOf(pat);
+      if (idx !== -1) { mappings[field] = csvColumns[idx]; break; }
+    }
+    if (!mappings[field] && field === 'name') {
+      const idx = lc.findIndex(c => c.includes('name') && !c.includes('grade') && !c.includes('school'));
+      if (idx !== -1) mappings[field] = csvColumns[idx];
+    }
+  }
+  return mappings;
+}
+
+function _impUniqueVals(rows, col) {
+  const s = new Set();
+  for (const r of rows) { const v = (r[col] ?? '').trim(); if (v !== '') s.add(v); }
+  return [...s];
+}
+
+function _impAllFields() {
+  const customs = (config?.properties || [])
+    .filter(p => p.custom)
+    .map(p => ({
+      key: p.name, label: p.display_name, custom: true,
+      type: p.type === 'boolean' ? 'boolean' : 'choice',
+      options: p.type !== 'boolean' ? (p.values || []).map(v => ({ v, label: v })) : undefined,
+    }));
+  return [..._IMP_FIELDS, ...customs];
+}
+
+function _impValueFields(state) {
+  return _impAllFields()
+    .filter(f => f.type === 'choice' || f.type === 'boolean')
+    .map(f => {
+      const col = state.colMappings[f.key];
+      if (!col) return null;
+      const vals = _impUniqueVals(state.rawRows, col);
+      return { field: f, col, entries: vals.map(raw => ({ raw, suggested: _impSuggest(f, raw) })) };
+    })
+    .filter(Boolean);
+}
+
+function _impAllRecognized(valueFields) {
+  return valueFields.every(({ entries }) => entries.every(e => e.suggested !== null));
+}
+
+function _impBuildStudents(state) {
+  const gradeCol = state.colMappings['grade'];
+  const nameCol  = state.colMappings['name'];
+  const students = [];
+  for (const row of state.rawRows) {
+    const name = (row[nameCol] || '').trim();
+    if (!name) continue;
+    if (gradeCol) {
+      const rowGrade = normalizeGradeName(row[gradeCol] || '');
+      if (rowGrade !== currentGrade?.name) continue;
+    }
+    const student = { name };
+    for (const f of _impAllFields()) {
+      if (f.key === 'name') continue;
+      const col = state.colMappings[f.key];
+      if (f.type === 'text') {
+        student[f.key] = col ? (row[col] || '').trim() : '';
+        continue;
+      }
+      if (!col) {
+        student[f.key] = f.type === 'boolean' ? false : (f.options?.[0]?.v ?? '');
+        continue;
+      }
+      const rawVal = (row[col] || '').trim();
+      const mapped = state.valMappings[f.key]?.[rawVal] ?? _impSuggest(f, rawVal);
+      student[f.key] = f.type === 'boolean' ? mapped === 'true' : (mapped ?? f.options?.[0]?.v ?? '');
+    }
+    students.push(student);
+  }
+  return students;
+}
+
+let _impState = null;
+
+function showImportModal(mode) {
+  _impState = { step:1, mode: mode || 'grade', rawRows:[], columns:[], colMappings:{}, valMappings:{} };
+  _impRender();
+  document.getElementById('importModal').classList.add('open');
+}
+
+function _impRender() {
+  const body = document.getElementById('importModalBody');
+  const s = _impState;
+  const stepLabels = ['Upload','Map columns','Map values','Preview'];
+  const crumb = stepLabels.map((lbl,i) => {
+    const n = i+1, active = n===s.step, done = n<s.step;
+    return `<span style="color:${active?'var(--ink)':done?'var(--terra)':'var(--ink-4)'};font-size:${active?'14px':'13px'};font-weight:${active?600:400};">${done?'✓ ':''}${lbl}</span>`;
+  }).join('<span style="color:var(--ink-4);margin:0 5px;">›</span>');
+  const stepBar = `<div style="margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--line-soft);">${crumb}</div>`;
+
+  if (s.step===1) body.innerHTML = stepBar + _impStep1HTML();
+  else if (s.step===2) body.innerHTML = stepBar + _impStep2HTML();
+  else if (s.step===3) body.innerHTML = stepBar + _impStep3HTML();
+  else if (s.step===4) body.innerHTML = stepBar + _impStep4HTML();
+}
+
+function _impStep1HTML() {
+  return `
+    <div id="imp-dropzone"
+      style="border:2px dashed var(--line);border-radius:var(--rad-lg);padding:48px 24px;text-align:center;cursor:pointer;transition:border-color 0.15s;"
+      onclick="document.getElementById('imp-file-input').click()"
+      ondragover="event.preventDefault();this.style.borderColor='var(--terra)'"
+      ondragleave="this.style.borderColor='var(--line)'"
+      ondrop="event.preventDefault();this.style.borderColor='var(--line)';_impHandleFile(event.dataTransfer.files[0])">
+      <div style="font-size:28px;margin-bottom:10px;color:var(--ink-4);">↑</div>
+      <div style="font-weight:600;font-size:14px;color:var(--ink);margin-bottom:6px;">Drop a CSV file or click to browse</div>
+      <div style="font-size:12px;color:var(--ink-4);line-height:1.5;">Works with exports from PowerSchool, Infinite Campus, Aeries, or any spreadsheet.<br>We'll walk you through mapping your columns and values.</div>
+    </div>
+    <input id="imp-file-input" type="file" accept=".csv,.txt" style="display:none" onchange="_impHandleFile(this.files[0])">
+    <div id="imp-err" style="margin-top:10px;font-size:13px;color:var(--rose);display:none;"></div>`;
+}
+
+function _impStep2HTML() {
+  const s = _impState;
+  const rows = _impAllFields().map(f => {
+    const sel = s.colMappings[f.key] || '';
+    const sample = sel ? _impUniqueVals(s.rawRows, sel).slice(0,4).join(', ') : '';
+    return `<tr style="border-top:1px solid var(--line-soft);">
+      <td style="padding:8px 12px;font-size:13px;font-weight:500;white-space:nowrap;color:var(--ink);">
+        ${escAttr(f.label)}${f.required?` <span style="color:var(--terra)">*</span>`:''}
+      </td>
+      <td style="padding:8px 12px;">
+        <select onchange="_impSetCol('${escAttr(f.key)}',this.value)"
+          style="width:100%;padding:6px 8px;border:1px solid var(--line);border-radius:var(--rad);font-size:13px;font-family:inherit;background:var(--bg);color:var(--ink);">
+          <option value="">— skip —</option>
+          ${s.columns.map(c=>`<option value="${escAttr(c)}" ${c===sel?'selected':''}>${escAttr(c)}</option>`).join('')}
+        </select>
+      </td>
+      <td style="padding:8px 12px;font-size:12px;color:var(--ink-4);font-style:${sample?'normal':'italic'};max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escAttr(sample)}">
+        ${sample ? escAttr(sample) : 'not mapped'}
+      </td>
+    </tr>`;
+  }).join('');
+
+  const gradeSel = s.colMappings['grade'] || '';
+  const gradeSample = gradeSel ? _impUniqueVals(s.rawRows, gradeSel).slice(0,4).join(', ') : '';
+
+  return `
+    <div style="font-size:13px;color:var(--ink-3);margin-bottom:14px;">
+      <strong>${s.rawRows.length} rows</strong> detected. Match your columns to our fields — we've pre-filled our best guesses.
+    </div>
+    <div style="overflow-y:auto;max-height:340px;border:1px solid var(--line);border-radius:var(--rad);">
+      <table style="width:100%;border-collapse:collapse;">
+        <thead style="position:sticky;top:0;background:var(--bg-2);z-index:1;">
+          <tr>
+            <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);">Our field</th>
+            <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);">Your column</th>
+            <th style="padding:8px 12px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);">Sample values</th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    <div style="margin-top:12px;padding:10px 12px;background:var(--bg-2);border-radius:var(--rad);display:flex;align-items:center;gap:10px;">
+      <span style="font-size:13px;font-weight:500;color:var(--ink);white-space:nowrap;">
+        Grade column${s.mode==='schoolYear' ? ' <span style="color:var(--terra)">*</span>' : ''}
+      </span>
+      <select onchange="_impSetCol('grade',this.value)"
+        style="flex:1;padding:6px 8px;border:1px solid ${s.mode==='schoolYear'&&!gradeSel?'var(--terra)':'var(--line)'};border-radius:var(--rad);font-size:13px;font-family:inherit;background:var(--bg);color:var(--ink);">
+        <option value="">${s.mode==='schoolYear' ? '— required —' : '— import all rows —'}</option>
+        ${s.columns.map(c=>`<option value="${escAttr(c)}" ${c===gradeSel?'selected':''}>${escAttr(c)}</option>`).join('')}
+      </select>
+      <span style="font-size:12px;color:var(--ink-4);white-space:nowrap;">${gradeSample ? escAttr(gradeSample) : s.mode==='schoolYear' ? 'splits students by grade' : 'filters to '+escAttr(currentGrade?.name||'this grade')}</span>
+    </div>
+    <div id="imp-err" style="margin-top:10px;font-size:13px;color:var(--rose);display:none;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+      <button class="btn ghost" onclick="_impState.step=1;_impRender()">Back</button>
+      <button class="btn primary" onclick="_impStep2Next()">Next: Map values →</button>
+    </div>`;
+}
+
+function _impSetCol(fieldKey, colName) {
+  _impState.colMappings[fieldKey] = colName || null;
+  _impRender();
+}
+
+function _impStep2Next() {
+  if (!_impState.colMappings['name']) { _impShowErr('You must map the student name column.'); return; }
+  if (_impState.mode === 'schoolYear' && !_impState.colMappings['grade']) { _impShowErr('You must map the grade column to import across all grades.'); return; }
+  const vf = _impValueFields(_impState);
+  // Pre-apply suggestions without clobbering any existing manual mappings
+  for (const { field, entries } of vf) {
+    if (!_impState.valMappings[field.key]) _impState.valMappings[field.key] = {};
+    for (const e of entries) {
+      if (e.suggested && !(_impState.valMappings[field.key][e.raw])) {
+        _impState.valMappings[field.key][e.raw] = e.suggested;
+      }
+    }
+  }
+  _impState.step = _impAllRecognized(vf) ? 4 : 3;
+  _impRender();
+}
+
+function _impStep3HTML() {
+  const s = _impState;
+  const vf = _impValueFields(s);
+  const unrecognizedFields = vf.filter(({ entries }) => entries.some(e => !e.suggested));
+
+  const sections = unrecognizedFields.map(({ field, col, entries }) => {
+    const rows = entries.map(({ raw, suggested }) => {
+      const current = s.valMappings[field.key]?.[raw] ?? suggested ?? '';
+      const unrecog = !suggested;
+      const opts = field.type === 'boolean'
+        ? [{v:'true',label:'Yes'},{v:'false',label:'No'}]
+        : (field.options || []);
+      return `<tr>
+        <td style="padding:8px 14px;font-size:13px;font-family:var(--t-mono);color:var(--ink);border-top:1px solid var(--line-soft);">${escAttr(raw)}</td>
+        <td style="padding:8px 8px;color:var(--ink-4);border-top:1px solid var(--line-soft);">→</td>
+        <td style="padding:8px 14px;border-top:1px solid var(--line-soft);">
+          <select data-field="${escAttr(field.key)}" data-raw="${escAttr(raw)}"
+            onchange="_impSetVal('${escAttr(field.key)}','${escAttr(raw)}',this.value)"
+            style="padding:5px 8px;border:1px solid ${unrecog?'var(--terra)':'var(--line)'};border-radius:var(--rad);font-size:13px;font-family:inherit;background:var(--bg);color:var(--ink);">
+            ${unrecog ? '<option value="">— choose —</option>' : ''}
+            ${opts.map(o=>`<option value="${escAttr(o.v)}" ${o.v===current?'selected':''}>${escAttr(o.label)}</option>`).join('')}
+          </select>
+        </td>
+        ${unrecog ? '<td style="padding:8px 4px;font-size:11px;color:var(--terra);border-top:1px solid var(--line-soft);">needs mapping</td>' : '<td style="border-top:1px solid var(--line-soft);"></td>'}
+      </tr>`;
+    }).join('');
+    return `
+      <div style="margin-bottom:20px;">
+        <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px;">
+          ${escAttr(field.label)} <span style="font-weight:400;text-transform:none;font-size:11px;color:var(--ink-4);">from column "${escAttr(col)}"</span>
+        </div>
+        <table style="width:100%;border-collapse:collapse;border:1px solid var(--line);border-radius:var(--rad);overflow:hidden;">
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+  }).join('');
+
+  return `
+    <div style="font-size:13px;color:var(--ink-3);margin-bottom:16px;">
+      We couldn't automatically recognize these values. Choose what each one means.
+    </div>
+    <div style="max-height:380px;overflow-y:auto;">${sections}</div>
+    <div id="imp-err" style="margin-top:10px;font-size:13px;color:var(--rose);display:none;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+      <button class="btn ghost" onclick="_impState.step=2;_impRender()">Back</button>
+      <button class="btn primary" onclick="_impStep3Next()">Next: Preview →</button>
+    </div>`;
+}
+
+function _impSetVal(fieldKey, rawVal, ourVal) {
+  if (!_impState.valMappings[fieldKey]) _impState.valMappings[fieldKey] = {};
+  _impState.valMappings[fieldKey][rawVal] = ourVal;
+}
+
+function _impStep3Next() {
+  const vf = _impValueFields(_impState);
+  for (const { field, entries } of vf) {
+    for (const { raw, suggested } of entries) {
+      if (!suggested && !_impState.valMappings[field.key]?.[raw]) {
+        _impShowErr('Please map all highlighted values before continuing.'); return;
+      }
+    }
+  }
+  _impState.step = 4;
+  _impRender();
+}
+
+function _impStep4HTML() {
+  const s = _impState;
+  const mappedFields = _impAllFields().filter(f => f.key==='name' || s.colMappings[f.key]);
+  const backStep = _impAllRecognized(_impValueFields(s)) ? 2 : 3;
+
+  let summary, tableHTML;
+
+  if (s.mode === 'schoolYear') {
+    const byGrade = _impBuildByGrade(s);
+    const totalStudents = Object.values(byGrade).reduce((n, arr) => n + arr.length, 0);
+    const gradeRows = Object.entries(byGrade).map(([g, arr]) =>
+      `<tr><td style="padding:7px 12px;font-size:13px;border-top:1px solid var(--line-soft);">${escAttr(g)}</td>
+           <td style="padding:7px 12px;font-size:13px;border-top:1px solid var(--line-soft);color:var(--ink-3);">${arr.length} student${arr.length!==1?'s':''}</td></tr>`
+    ).join('');
+    summary = `Importing <strong>${totalStudents} students</strong> across <strong>${Object.keys(byGrade).length} grades</strong>`;
+    tableHTML = `<table style="width:100%;border-collapse:collapse;">
+      <thead><tr>
+        <th style="padding:7px 12px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-3);background:var(--bg-2);">Grade</th>
+        <th style="padding:7px 12px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-3);background:var(--bg-2);">Students</th>
+      </tr></thead>
+      <tbody>${gradeRows}</tbody></table>`;
+  } else {
+    const students = _impBuildStudents(s);
+    const preview = students.slice(0, 10);
+    const thCells = mappedFields.map(f =>
+      `<th style="padding:7px 10px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-3);white-space:nowrap;background:var(--bg-2);">${escAttr(f.label)}</th>`
+    ).join('');
+    const trRows = preview.map(st => {
+      return '<tr>' + mappedFields.map(f => {
+        const val = st[f.key];
+        let disp = val == null ? '—' : String(val);
+        if (f.type === 'boolean') disp = val ? 'Yes' : 'No';
+        if (f.type === 'choice' && f.options) disp = f.options.find(o=>o.v===val)?.label ?? disp;
+        return `<td style="padding:7px 10px;font-size:12px;border-top:1px solid var(--line-soft);white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;">${escAttr(disp)}</td>`;
+      }).join('') + '</tr>';
+    }).join('');
+    summary = `Importing <strong>${students.length} students</strong> into <strong>${escAttr(currentGrade?.name||'this grade')}</strong>${students.length>10?' — showing first 10':''}`;
+    tableHTML = `<table style="width:100%;border-collapse:collapse;white-space:nowrap;">
+      <thead><tr>${thCells}</tr></thead>
+      <tbody>${trRows}</tbody></table>`;
+  }
+
+  const confirmCount = s.mode === 'schoolYear'
+    ? Object.values(_impBuildByGrade(s)).reduce((n, arr) => n + arr.length, 0)
+    : _impBuildStudents(s).length;
+
+  return `
+    <div style="font-size:13px;color:var(--ink-3);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">
+      <span>${summary}</span>
+      <span style="font-size:12px;color:var(--rose);">Replaces existing students &amp; assignments</span>
+    </div>
+    <div style="overflow:auto;max-height:320px;border:1px solid var(--line);border-radius:var(--rad);">${tableHTML}</div>
+    <div id="imp-err" style="margin-top:10px;font-size:13px;color:var(--rose);display:none;"></div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
+      <button class="btn ghost" onclick="_impState.step=${backStep};_impRender()">Back</button>
+      <button class="btn primary" id="imp-confirm-btn" onclick="_impConfirm()">Import ${confirmCount} students</button>
+    </div>`;
+}
+
+function _impBuildByGrade(state) {
+  // Returns { gradeName: [students] } for school year mode import.
+  const gradeCol = state.colMappings['grade'];
+  const nameCol  = state.colMappings['name'];
+  const byGrade  = {};
+
+  for (const row of state.rawRows) {
+    const name = (row[nameCol] || '').trim();
+    if (!name) continue;
+    const gradeName = normalizeGradeName(row[gradeCol] || '');
+    if (!gradeName) continue; // skip unrecognized grades
+
+    if (!byGrade[gradeName]) byGrade[gradeName] = [];
+    const student = { name };
+    for (const f of _impAllFields()) {
+      if (f.key === 'name') continue;
+      const col = state.colMappings[f.key];
+      if (f.type === 'text') { student[f.key] = col ? (row[col] || '').trim() : ''; continue; }
+      if (!col) { student[f.key] = f.type === 'boolean' ? false : (f.options?.[0]?.v ?? ''); continue; }
+      const rawVal = (row[col] || '').trim();
+      const mapped = state.valMappings[f.key]?.[rawVal] ?? _impSuggest(f, rawVal);
+      student[f.key] = f.type === 'boolean' ? mapped === 'true' : (mapped ?? f.options?.[0]?.v ?? '');
+    }
+    byGrade[gradeName].push(student);
+  }
+  return byGrade;
+}
+
+async function _impConfirm() {
+  const s = _impState;
+  const btn = document.getElementById('imp-confirm-btn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Importing…'; }
+
+  let res;
+  if (s.mode === 'schoolYear') {
+    const byGrade = _impBuildByGrade(s);
+    if (!Object.keys(byGrade).length) { _impShowErr('No students to import.'); if (btn) { btn.disabled = false; btn.textContent = 'Import students'; } return; }
+    res = await fetch('/api/school-years/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ grades: byGrade }),
+    });
+  } else {
+    const students = _impBuildStudents(s);
+    if (!students.length) { _impShowErr('No students to import.'); if (btn) { btn.disabled = false; btn.textContent = `Import ${students.length} students`; } return; }
+    res = await fetch(`/api/grades/${currentGrade.id}/students`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ students }),
+    });
+  }
+
+  if (res.ok) {
+    closeImportModal();
+    await loadGrades();
+    showScreen('students');
+  } else {
+    if (btn) { btn.disabled = false; btn.textContent = 'Import students'; }
+    _impShowErr('Failed to save. Please try again.');
+  }
+}
+
+async function _impHandleFile(file) {
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const lines = text.trim().split('\n').filter(l => l.trim());
+    if (lines.length < 2) { _impShowErr('CSV has no data rows.'); return; }
+    const columns = parseCSVLine(lines[0]).map(h => h.trim());
+    if (!columns.length) { _impShowErr('Could not read column headers.'); return; }
+    const rawRows = [];
+    for (let i = 1; i < lines.length; i++) {
+      const cells = parseCSVLine(lines[i]);
+      const row = {};
+      columns.forEach((col, ci) => { row[col] = (cells[ci] ?? '').trim(); });
+      rawRows.push(row);
+    }
+    _impState.columns = columns;
+    _impState.rawRows = rawRows;
+    _impState.colMappings = _impAutoDetect(columns);
+    _impState.step = 2;
+    _impRender();
+  } catch (e) {
+    _impShowErr('Could not parse file: ' + e.message);
+  }
+}
+
+function _impShowErr(msg) {
+  const el = document.getElementById('imp-err');
+  if (el) { el.textContent = msg; el.style.display = ''; }
+}
+
+// Expose functions called from inline HTML handlers
+window._impHandleFile  = _impHandleFile;
+window._impSetCol      = _impSetCol;
+window._impSetVal      = _impSetVal;
+window._impStep2Next   = _impStep2Next;
+window._impStep3Next   = _impStep3Next;
+window._impConfirm     = _impConfirm;
+window.showImportModal = showImportModal;
 
 function closeImportModal() {
   document.getElementById("importModal").classList.remove("open");
@@ -4151,12 +5305,13 @@ function showStudentDetail(name) {
         </div>
       </div>
 
+      ${window.classifyIsAdmin ? `
       <div class="detail-section" style="margin-top:auto; padding-top:16px; border-top:1px solid var(--line-soft)">
         <button class="btn ghost sm" style="color:var(--rose); border-color:var(--rose-soft); width:100%"
           onclick="confirmDeleteStudent('${student.name.replace(/'/g, "\\'")}')" data-mutates="true">
           Remove from roster
         </button>
-      </div>
+      </div>` : ''}
     </div>
   `;
 
@@ -4511,249 +5666,16 @@ async function removeRelation(studentName, type, targetName) {
   await _saveAndReopenDetail(studentName);
 }
 
-async function _handleImportModalFile(file) {
-  const statusEl = document.getElementById("import-modal-status");
-  if (statusEl) {
-    statusEl.textContent = "Parsing…";
-    statusEl.style.color = "var(--ink-3)";
-  }
 
-  // Temporarily swap the error target so handleGradeCSVFile can write status
-  const orig = document.getElementById("grade-csv-error");
+// ── Grade CSV import (empty-state drop → opens wizard) ────────────────────────
 
-  // Inline the same parsing + save, then close modal on success
+function handleGradeCSVFile(file) {
   if (!file || !currentGrade) return;
-
-  const text = await file.text();
-  const lines = text
-    .trim()
-    .split("\n")
-    .filter((l) => l.trim());
-  if (lines.length < 2) {
-    if (statusEl) {
-      statusEl.textContent = "CSV is empty.";
-      statusEl.style.color = "var(--rose)";
-    }
-    return;
-  }
-
-  const headers = parseCSVLine(lines[0]).map((h) => h.trim().toLowerCase());
-  const nameIdx = headers.findIndex(
-    (h) => h.includes("name") || h === "student",
-  );
-  const gradeIdx = headers.findIndex((h) => h === "grade");
-  const genderIdx = headers.findIndex(
-    (h) => h.includes("gender") || h.includes("sex"),
-  );
-  const mathIdx = headers.findIndex((h) => h === "math");
-  const readingIdx = headers.findIndex((h) => h === "reading");
-  const behaviorIdx = headers.findIndex((h) => h.includes("behavior"));
-  const indepIdx = headers.findIndex((h) => h.includes("independence"));
-  const iepIdx = headers.findIndex((h) => h === "iep");
-  const plan504Idx = headers.findIndex((h) => h === "504");
-  const eslIdx = headers.findIndex((h) => h === "esl");
-  const gateIdx = headers.findIndex((h) => h === "gate");
-  const friendsIdx = headers.findIndex((h) => h.includes("friend"));
-  const incompIdx = headers.findIndex((h) => h.includes("incompatible"));
-
-  const customCols = (config.properties || [])
-    .filter((p) => p.custom)
-    .map((prop) => ({
-      prop,
-      idx: headers.findIndex(
-        (h) =>
-          h === prop.name ||
-          h === prop.display_name.toLowerCase().replace(/\s+/g, "_"),
-      ),
-    }));
-
-  if (nameIdx === -1) {
-    if (statusEl) {
-      statusEl.textContent = 'CSV must have a "name" column.';
-      statusEl.style.color = "var(--rose)";
-    }
-    return;
-  }
-
-  const students = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cells = parseCSVLine(lines[i]);
-    if (!cells[nameIdx]?.trim()) continue;
-    if (gradeIdx !== -1) {
-      const rowGrade = normalizeGradeName(cells[gradeIdx] || "");
-      if (rowGrade && rowGrade !== currentGrade.name) continue;
-    }
-    const customData = {};
-    customCols.forEach(({ prop, idx }) => {
-      if (prop.type === "boolean") {
-        customData[prop.name] =
-          idx !== -1 ? normalizeYesNo(cells[idx]) === "y" : false;
-      } else {
-        customData[prop.name] =
-          idx !== -1
-            ? cells[idx]?.trim() || prop.values?.[0] || ""
-            : prop.values?.[0] || "";
-      }
-    });
-    students.push({
-      name: cells[nameIdx].trim(),
-      gender: genderIdx !== -1 ? normalizeGender(cells[genderIdx]) : "b",
-      behavior:
-        behaviorIdx !== -1 ? normalizeBehavior(cells[behaviorIdx]) : "neutral",
-      independence:
-        indepIdx !== -1 ? normalizeIndependence(cells[indepIdx]) : "neutral",
-      iep: iepIdx !== -1 ? normalizeYesNo(cells[iepIdx]) === "y" : false,
-      504:
-        plan504Idx !== -1 ? normalizeYesNo(cells[plan504Idx]) === "y" : false,
-      esl: eslIdx !== -1 ? normalizeYesNo(cells[eslIdx]) === "y" : false,
-      gate: gateIdx !== -1 ? normalizeYesNo(cells[gateIdx]) === "y" : false,
-      math: mathIdx !== -1 ? normalizeLevelHML(cells[mathIdx]) : "m",
-      reading: readingIdx !== -1 ? normalizeLevelHML(cells[readingIdx]) : "m",
-      friends: friendsIdx !== -1 ? (cells[friendsIdx] || "").trim() : "",
-      incompatible: incompIdx !== -1 ? (cells[incompIdx] || "").trim() : "",
-      ...customData,
-    });
-  }
-
-  if (students.length === 0) {
-    if (statusEl) {
-      statusEl.textContent = "No matching students found.";
-      statusEl.style.color = "var(--rose)";
-    }
-    return;
-  }
-
-  if (statusEl)
-    statusEl.textContent = `Found ${students.length} students — saving…`;
-
-  const res = await fetch(`/api/grades/${currentGrade.id}/students`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ students }),
-  });
-
-  if (res.ok) {
-    closeImportModal();
-    await loadGrades();
-    showScreen("students");
-  } else {
-    if (statusEl) {
-      statusEl.textContent = "Failed to save.";
-      statusEl.style.color = "var(--rose)";
-    }
-  }
-}
-window._handleImportModalFile = _handleImportModalFile;
-
-// ── Grade CSV import (empty-state screen) ─────────────────────────────────────
-
-async function handleGradeCSVFile(file) {
-  if (!file || !currentGrade) return;
-  const errorEl = document.getElementById("grade-csv-error");
-
-  const text = await file.text();
-  const lines = text
-    .trim()
-    .split("\n")
-    .filter((l) => l.trim());
-  if (lines.length < 2) {
-    if (errorEl) errorEl.textContent = "CSV is empty.";
-    return;
-  }
-
-  const headers = parseCSVLine(lines[0]).map((h) => h.trim().toLowerCase());
-  const nameIdx = headers.findIndex(
-    (h) => h.includes("name") || h === "student",
-  );
-  const gradeIdx = headers.findIndex((h) => h === "grade");
-  const genderIdx = headers.findIndex(
-    (h) => h.includes("gender") || h.includes("sex"),
-  );
-  const mathIdx = headers.findIndex((h) => h === "math");
-  const readingIdx = headers.findIndex((h) => h === "reading");
-  const behaviorIdx = headers.findIndex((h) => h.includes("behavior"));
-  const indepIdx = headers.findIndex((h) => h.includes("independence"));
-  const iepIdx = headers.findIndex((h) => h === "iep");
-  const plan504Idx = headers.findIndex((h) => h === "504");
-  const eslIdx = headers.findIndex((h) => h === "esl");
-  const gateIdx = headers.findIndex((h) => h === "gate");
-  const friendsIdx = headers.findIndex((h) => h.includes("friend"));
-  const incompIdx = headers.findIndex((h) => h.includes("incompatible"));
-
-  const customCols = (config.properties || [])
-    .filter((p) => p.custom)
-    .map((prop) => ({
-      prop,
-      idx: headers.findIndex(
-        (h) =>
-          h === prop.name ||
-          h === prop.display_name.toLowerCase().replace(/\s+/g, "_"),
-      ),
-    }));
-
-  if (nameIdx === -1) {
-    if (errorEl) errorEl.textContent = 'CSV must have a "name" column.';
-    return;
-  }
-  if (errorEl) errorEl.textContent = "";
-
-  const students = [];
-  for (let i = 1; i < lines.length; i++) {
-    const cells = parseCSVLine(lines[i]);
-    if (!cells[nameIdx]?.trim()) continue;
-    if (gradeIdx !== -1) {
-      const rowGrade = normalizeGradeName(cells[gradeIdx] || "");
-      if (rowGrade && rowGrade !== currentGrade.name) continue;
-    }
-    const customData = {};
-    customCols.forEach(({ prop, idx }) => {
-      if (prop.type === "boolean") {
-        customData[prop.name] =
-          idx !== -1 ? normalizeYesNo(cells[idx]) === "y" : false;
-      } else {
-        customData[prop.name] =
-          idx !== -1
-            ? cells[idx]?.trim() || prop.values?.[0] || ""
-            : prop.values?.[0] || "";
-      }
-    });
-    students.push({
-      name: cells[nameIdx].trim(),
-      gender: genderIdx !== -1 ? normalizeGender(cells[genderIdx]) : "b",
-      behavior:
-        behaviorIdx !== -1 ? normalizeBehavior(cells[behaviorIdx]) : "neutral",
-      independence:
-        indepIdx !== -1 ? normalizeIndependence(cells[indepIdx]) : "neutral",
-      iep: iepIdx !== -1 ? normalizeYesNo(cells[iepIdx]) === "y" : false,
-      504:
-        plan504Idx !== -1 ? normalizeYesNo(cells[plan504Idx]) === "y" : false,
-      esl: eslIdx !== -1 ? normalizeYesNo(cells[eslIdx]) === "y" : false,
-      gate: gateIdx !== -1 ? normalizeYesNo(cells[gateIdx]) === "y" : false,
-      math: mathIdx !== -1 ? normalizeLevelHML(cells[mathIdx]) : "m",
-      reading: readingIdx !== -1 ? normalizeLevelHML(cells[readingIdx]) : "m",
-      friends: friendsIdx !== -1 ? (cells[friendsIdx] || "").trim() : "",
-      incompatible: incompIdx !== -1 ? (cells[incompIdx] || "").trim() : "",
-      ...customData,
-    });
-  }
-
-  if (students.length === 0) {
-    if (errorEl) errorEl.textContent = "No matching students found in CSV.";
-    return;
-  }
-
-  const res = await fetch(`/api/grades/${currentGrade.id}/students`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ students }),
-  });
-
-  if (res.ok) {
-    await loadGrades();
-    showScreen("students");
-  } else {
-    if (errorEl) errorEl.textContent = "Failed to save students.";
-  }
+  // Open the import modal wizard with the file pre-loaded
+  _impState = { step:1, rawRows:[], columns:[], colMappings:{}, valMappings:{} };
+  _impRender();
+  document.getElementById('importModal').classList.add('open');
+  _impHandleFile(file);
 }
 
 // ── Notice modal (replaces browser alert for key actions) ────────────────────
@@ -5656,7 +6578,7 @@ async function importAllData(input) {
     const data = await res.json();
     if (res.ok) {
       statusEl.textContent = "Imported successfully. Reloading…";
-      statusEl.style.color = "var(--sage-ink)";
+      statusEl.style.color = "var(--sage)";
       setTimeout(() => window.location.reload(), 1200);
     } else {
       statusEl.textContent = data.error || "Import failed.";
@@ -5942,6 +6864,17 @@ function handleDragLeave(event) {
   }
 }
 
+function recomputeFriendStatus() {
+  const assignments = window.currentAssignments;
+  if (!assignments) return;
+  const classOf = {};
+  assignments.forEach((s) => { classOf[s.name] = s.assigned_class; });
+  assignments.forEach((s) => {
+    const friends = parseIncompatNames(s.friends);
+    s.has_friend_in_class = friends.some((f) => classOf[f] === s.assigned_class) ? 1 : 0;
+  });
+}
+
 async function handleDrop(event) {
   event.preventDefault();
   event.stopPropagation();
@@ -5994,6 +6927,8 @@ async function handleDrop(event) {
     if (student) student.assigned_class = targetClass;
   }
 
+  recomputeFriendStatus();
+
   if (involvesUnassigned) {
     // No save button in this context — auto-save immediately
     try {
@@ -6008,32 +6943,21 @@ async function handleDrop(event) {
     } catch (err) {
       console.error("Failed to save assignment change:", err);
     }
+    // Full re-render needed since assignment list structure changed
+    const currentEditMode = window.editMode;
+    await showScreen("results");
+    window.editMode = currentEditMode;
+    const checkbox = document.getElementById("editModeToggle");
+    if (checkbox) checkbox.checked = currentEditMode;
   } else {
-    // Class-to-class move inside edit mode — requires explicit save
+    // Class-to-class move inside edit mode — targeted refresh, no server fetch
+    console.log("handleDrop: class-to-class, using refreshClassCardsContainer");
     window.hasUnsavedChanges = true;
+    refreshClassCardsContainer();
+    console.log("handleDrop: refreshClassCardsContainer done");
   }
 
-  // Refresh the results screen to show updated assignments and stats
-  const currentEditMode = window.editMode;
-  const currentHasUnsaved = window.hasUnsavedChanges;
-  await showScreen("results");
-  window.editMode = currentEditMode;
-  window.hasUnsavedChanges = currentHasUnsaved;
-
-  // Restore UI state
-  const checkbox = document.getElementById("editModeToggle");
-  if (checkbox) checkbox.checked = currentEditMode;
-
-  const actionsDiv = document.getElementById("editModeActions");
-  if (actionsDiv) actionsDiv.style.display = currentEditMode ? "flex" : "none";
-
-  const saveBtn = actionsDiv?.querySelector("button.primary");
-  const revertBtn = actionsDiv?.querySelector("button.ghost");
-  if (saveBtn) saveBtn.disabled = !currentHasUnsaved;
-  if (revertBtn) revertBtn.disabled = !currentHasUnsaved;
-
   draggedStudent = null;
-  applyAssignmentFilters();
 }
 
 // Attach drag listeners using event delegation
@@ -6102,6 +7026,7 @@ function attachDragListeners() {
 }
 
 window.handleDragStart = handleDragStart;
+window.refreshClassCardsContainer = refreshClassCardsContainer;
 window.handleDragEnd = handleDragEnd;
 window.handleDragOver = handleDragOver;
 window.handleDragLeave = handleDragLeave;

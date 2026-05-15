@@ -1,0 +1,265 @@
+[
+  {
+    "id": "1567b999-f7e1-446f-9aef-2a7c71085390",
+    "timestamp": "2026-05-14T16:10:18.093605",
+    "session_name": "sam",
+    "category": "assignment",
+    "action": "run_optimizer",
+    "grade": "Kindergarten",
+    "details": {
+      "num_classes": 5,
+      "student_count": 91,
+      "solver_status": "OPTIMAL"
+    }
+  },
+  {
+    "id": "7ee60c8a-66c1-4054-b302-bd77a6a5c000",
+    "timestamp": "2026-05-14T16:11:10.220640",
+    "session_name": "sam",
+    "category": "students",
+    "action": "edit_student",
+    "grade": "Kindergarten",
+    "details": {
+      "students": [
+        "Oliver James"
+      ]
+    }
+  },
+  {
+    "id": "63cbb2ba-f12c-42fc-a5db-d93bd0f76f39",
+    "timestamp": "2026-05-14T16:11:11.252277",
+    "session_name": "sam",
+    "category": "students",
+    "action": "edit_student",
+    "grade": "Kindergarten",
+    "details": {
+      "students": [
+        "Oliver James"
+      ]
+    }
+  },
+  {
+    "id": "e810fe34-1462-4d92-958a-e8a0cd7ea23e",
+    "timestamp": "2026-05-14T16:11:14.209473",
+    "session_name": "sam",
+    "category": "students",
+    "action": "edit_student",
+    "grade": "Kindergarten",
+    "details": {
+      "students": [
+        "Maya Green"
+      ]
+    }
+  },
+  {
+    "id": "e88e4a9d-f7cb-41e4-a64c-e7886206e46c",
+    "timestamp": "2026-05-14T16:26:15.453666",
+    "session_name": "sam",
+    "category": "teachers",
+    "action": "add_teacher",
+    "grade": "Kindergarten",
+    "details": {
+      "teachers": [
+        "Jensen"
+      ]
+    }
+  },
+  {
+    "id": "65fa9e91-f6c4-4ff0-9425-2c15e9d04a75",
+    "timestamp": "2026-05-14T16:26:28.298895",
+    "session_name": "sam",
+    "category": "teachers",
+    "action": "remove_teacher",
+    "grade": "Kindergarten",
+    "details": {
+      "teachers": [
+        "Jensen"
+      ]
+    }
+  },
+  {
+    "id": "276c1b43-e46a-4e60-8256-d11794ab8359",
+    "timestamp": "2026-05-14T16:32:19.129730",
+    "session_name": "sam",
+    "category": "assignment",
+    "action": "rename_classes",
+    "grade": "Kindergarten",
+    "details": {
+      "class_names": {
+        "1": "Class 1A"
+      }
+    }
+  },
+  {
+    "id": "04d1076d-8481-40a3-a5e9-458b18590e67",
+    "timestamp": "2026-05-14T16:35:58.948705",
+    "session_name": "sam",
+    "category": "students",
+    "action": "edit_student",
+    "grade": "Kindergarten",
+    "details": {
+      "students": [
+        {
+          "name": "Ava Cruz",
+          "fields": [
+            "iep"
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "f75ea7c3-d5f9-43ce-92e4-731e2edab360",
+    "timestamp": "2026-05-14T16:37:11.479831",
+    "session_name": "sam",
+    "category": "students",
+    "action": "edit_student",
+    "grade": "Kindergarten",
+    "details": {
+      "students": [
+        {
+          "name": "Ryan Lewis",
+          "changes": [
+            {
+              "field": "iep",
+              "from": false,
+              "to": true
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "d87c6f8c-a73a-43a4-b2a7-170c012990a9",
+    "timestamp": "2026-05-14T16:55:16.056821",
+    "session_name": "sam",
+    "category": "students",
+    "action": "edit_student",
+    "grade": "Kindergarten",
+    "details": {
+      "students": [
+        {
+          "name": "Violet Robinson",
+          "changes": [
+            {
+              "field": "gender",
+              "from": "g",
+              "to": "b"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "050471fc-f7bd-43f7-ba58-3ad89f4e2b2f",
+    "timestamp": "2026-05-14T16:55:27.299664",
+    "session_name": "sam",
+    "category": "students",
+    "action": "edit_student",
+    "grade": "Kindergarten",
+    "details": {
+      "students": [
+        {
+          "name": "Camila Lopez",
+          "changes": [
+            {
+              "field": "gender",
+              "from": "g",
+              "to": "b"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "6815acdc-c14a-4558-b5c0-ed13b8e26edf",
+    "timestamp": "2026-05-14T16:55:34.450797",
+    "session_name": "sam",
+    "category": "students",
+    "action": "edit_student",
+    "grade": "Kindergarten",
+    "details": {
+      "students": [
+        {
+          "name": "Savannah Reed",
+          "changes": [
+            {
+              "field": "gender",
+              "from": "g",
+              "to": "b"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "bbc2808b-2977-46ef-b756-11071f3b74b6",
+    "timestamp": "2026-05-14T16:55:37.225726",
+    "session_name": "sam",
+    "category": "students",
+    "action": "edit_student",
+    "grade": "Kindergarten",
+    "details": {
+      "students": [
+        {
+          "name": "Sophia Ward",
+          "changes": [
+            {
+              "field": "gender",
+              "from": "g",
+              "to": "b"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "0ed456ba-77df-4f90-9e9b-b1e8a98160b3",
+    "timestamp": "2026-05-14T16:55:41.545254",
+    "session_name": "sam",
+    "category": "students",
+    "action": "edit_student",
+    "grade": "Kindergarten",
+    "details": {
+      "students": [
+        {
+          "name": "Paisley Kelly",
+          "changes": [
+            {
+              "field": "gender",
+              "from": "g",
+              "to": "b"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "id": "fd5a972c-c7b9-4020-9054-01924e170785",
+    "timestamp": "2026-05-14T16:55:57.282125",
+    "session_name": "sam",
+    "category": "assignment",
+    "action": "run_optimizer",
+    "grade": "Kindergarten",
+    "details": {
+      "num_classes": 5,
+      "student_count": 91,
+      "solver_status": "OPTIMAL"
+    }
+  },
+  {
+    "id": "6a2484d8-6863-4d08-870f-b207ab391c7c",
+    "timestamp": "2026-05-14T16:57:13.709860",
+    "session_name": "sam",
+    "category": "assignment",
+    "action": "reset_rules",
+    "grade": "Kindergarten",
+    "details": {}
+  }
+]

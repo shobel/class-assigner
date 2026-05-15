@@ -8,7 +8,12 @@ if (!sessionId) {
   localStorage.setItem('classify_session_id', sessionId);
 }
 
-let sessionName = localStorage.getItem('classify_session_name');
+// Use the authenticated username as the session name (injected by the server).
+// Fall back to localStorage for any legacy sessions.
+let sessionName = window.classifyUsername || localStorage.getItem('classify_session_name');
+if (sessionName) {
+  localStorage.setItem('classify_session_name', sessionName);
+}
 
 // Wrap native fetch to automatically add session ID header and handle 403 errors
 const originalFetch = window.fetch;
@@ -22,6 +27,12 @@ window.fetch = async function(url, options = {}) {
   }
 
   const response = await originalFetch(url, options);
+
+  // Handle 401 - session expired or not logged in
+  if (response.status === 401) {
+    window.location.href = '/login';
+    return response;
+  }
 
   // Handle 403 - lock not held
   if (response.status === 403 && options.method && options.method !== 'GET') {
@@ -91,88 +102,15 @@ let pollInterval = null;
 
 // Initialize sync on page load
 async function initSync() {
-  // Prompt for session name if not set
+  // Session name comes from the authenticated username — no prompt needed.
   if (!sessionName) {
-    const hostname = await getHostname();
-    sessionName = await showSessionNamePrompt(hostname);
-    localStorage.setItem('classify_session_name', sessionName);
+    sessionName = 'Unknown';
   }
-
   // Don't acquire lock here - will acquire when opening a grade
   // Start polling
   startPolling();
 }
 
-function showSessionNamePrompt(defaultName) {
-  return new Promise((resolve) => {
-    const modal = document.createElement('div');
-    modal.style.cssText = `
-      position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: rgba(0,0,0,0.6);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 10000;
-    `;
-
-    modal.innerHTML = `
-      <div style="background: var(--bg); border-radius: var(--rad); padding: 28px; max-width: 440px; box-shadow: 0 4px 24px rgba(0,0,0,0.3);">
-        <div style="font-size: 20px; font-weight: 600; margin-bottom: 12px; color: var(--ink);">
-          Welcome to Classify
-        </div>
-        <div style="font-size: 14px; line-height: 1.6; color: var(--ink-2); margin-bottom: 20px;">
-          What should we call this device? This name will be shown to other users when you're editing a grade.
-        </div>
-        <input type="text" id="sessionNameInput" value="${defaultName}"
-          style="width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--rad); font-size: 14px; margin-bottom: 20px; font-family: inherit;"
-          placeholder="e.g., Sam's MacBook">
-        <div style="display: flex; gap: 8px; justify-content: flex-end;">
-          <button class="btn primary" onclick="window.sessionNameSubmit()" style="min-width: 100px;">
-            Continue
-          </button>
-        </div>
-      </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    // Handle submit
-    window.sessionNameSubmit = () => {
-      const input = document.getElementById('sessionNameInput');
-      const name = input.value.trim() || defaultName;
-      modal.remove();
-      delete window.sessionNameSubmit;
-      resolve(name);
-    };
-
-    // Submit on Enter key
-    setTimeout(() => {
-      const input = document.getElementById('sessionNameInput');
-      input.focus();
-      input.select();
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          window.sessionNameSubmit();
-        }
-      });
-    }, 100);
-  });
-}
-
-async function getHostname() {
-  // Try to get a friendly hostname
-  try {
-    const hostname = window.location.hostname;
-    if (hostname && hostname !== 'localhost' && hostname !== '127.0.0.1') {
-      return hostname;
-    }
-  } catch (e) {}
-  return 'My Computer';
-}
 
 async function tryAcquireLock(grade_id) {
   if (!grade_id) return false;
@@ -353,8 +291,10 @@ async function pollForChanges() {
 function updateLockUI() {
   const grade_id = window.currentGradeId;
   if (!grade_id) {
-    // No grade open - remove read-only mode
+    // No grade open - remove read-only mode and hide indicator
     document.body.classList.remove('read-only-mode');
+    const indicator = document.getElementById('lock-indicator');
+    if (indicator) { indicator.innerHTML = ''; indicator.style.display = 'none'; }
     return;
   }
 
@@ -375,6 +315,13 @@ function updateLockUI() {
 function updateLockIndicator(lockStatus) {
   const indicator = document.getElementById('lock-indicator');
   if (!indicator) return;
+
+  if (!window.currentGradeId) {
+    indicator.innerHTML = '';
+    indicator.style.display = 'none';
+    return;
+  }
+  indicator.style.display = '';
 
   if (!lockStatus.locked) {
     // No lock

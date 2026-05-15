@@ -20,6 +20,13 @@
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   </head>
   <body>
+    <!-- Update banner -->
+    <div id="update-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--terra);color:#fff;padding:8px 16px;font-size:13px;text-align:center;">
+      <span id="update-msg"></span>
+      <a id="update-link" href="#" target="_blank" style="color:#fff;font-weight:600;text-decoration:underline;margin-left:6px;">Download</a>
+      <button onclick="this.parentElement.style.display='none'" style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:#fff;font-size:16px;cursor:pointer;opacity:0.7;">×</button>
+    </div>
+
     <!-- Activation overlay — shown before app loads if not yet activated -->
     <div id="activation-overlay">
       <div id="activation-box">
@@ -172,6 +179,29 @@
             </svg>
             <span class="nav-label">School config</span>
           </div>
+          <div
+            class="nav-item"
+            id="nav-history"
+            onclick="showScreen('history')"
+          >
+            <svg class="nav-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+            </svg>
+            <span class="nav-label">History</span>
+          </div>
+          {% if is_admin %}
+          <div
+            class="nav-item"
+            id="nav-users"
+            onclick="showScreen('users')"
+          >
+            <svg class="nav-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+            <span class="nav-label">Users</span>
+          </div>
+          {% endif %}
         </div>
 
         <div class="side-section">
@@ -197,32 +227,26 @@
         </div>
 
         <div style="flex: 1"></div>
-        <div
-          class="side-section"
-          style="
-            border-top: 1px solid var(--line-soft);
-            margin-top: 8px;
-            padding-top: 12px;
-            padding-bottom: 12px;
-          "
-        >
-          <span
-            style="
-              text-transform: none;
-              letter-spacing: 0;
-              font-family: var(--t-ui);
-              font-size: 11px;
-              display: flex;
-              align-items: center;
-              gap: 6px;
-            "
-          >
-            <i
-              data-lucide="lock"
-              style="width: 11px; height: 11px; flex-shrink: 0"
-            ></i>
-            All data stays on this device
-          </span>
+        <div style="border-top: 1px solid var(--line-soft); margin-top: 8px; padding: 10px 12px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <div style="width:26px;height:26px;border-radius:50%;background:var(--terra-soft);color:var(--terra);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+              {{ username[:1].upper() if username else '?' }}
+            </div>
+            <div style="flex:1;min-width:0;">
+              <div style="font-size:12px;font-weight:500;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ username }}</div>
+              {% if is_admin %}<div style="font-size:10px;color:var(--terra);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;">Admin</div>{% endif %}
+            </div>
+            <form method="POST" action="/logout" style="margin:0;">
+              <button type="submit" title="Sign out"
+                style="background:none;border:none;cursor:pointer;color:var(--ink-4);padding:4px;border-radius:4px;display:flex;align-items:center;"
+                onmouseover="this.style.color='var(--ink)'" onmouseout="this.style.color='var(--ink-4)'">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                  <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+              </button>
+            </form>
+          </div>
         </div>
       </aside>
 
@@ -236,10 +260,7 @@
           <span class="cur" id="crumb-screen">...</span>
         </div>
         <div class="topbar-spacer"></div>
-        <div id="lock-indicator">
-          <span class="lock-dot free"></span>
-          <span class="lock-text">Loading...</span>
-        </div>
+        <div id="lock-indicator" style="display:none"></div>
       </div>
 
       <!-- Main -->
@@ -899,13 +920,10 @@
 
     <!-- Onboarding Overlay -->
     <div class="onboarding-overlay" id="onboardingOverlay">
-      <div class="onboarding-container">
+      <div class="onboarding-container" style="max-width:460px;">
         <div class="onboarding-header">
           <h1>Welcome to <span class="brand-class">Class</span>ify</h1>
-          <p class="lede">
-            Let's get started by importing your current student roster. Upload a
-            CSV with all students and their grades.
-          </p>
+          <p class="lede">Let's start by setting up your school year. You'll import students next.</p>
         </div>
 
         <div class="onboarding-body">
@@ -918,49 +936,7 @@
               class="year-input"
               placeholder="2025–26"
             />
-          </div>
-
-          <div class="onboarding-section">
-            <h3>Upload Student Roster</h3>
-            <p>Drop your CSV file here, or click to browse.</p>
-            <div class="drop-zone" id="dropZone">
-              <div class="drop-zone-icon"></div>
-              <div class="drop-zone-text">Drop CSV file or click to upload</div>
-              <div class="drop-zone-hint">
-                Must include "name" and "grade" columns
-              </div>
-            </div>
-            <input
-              type="file"
-              id="rosterFile"
-              accept=".csv"
-              style="display: none"
-            />
-
-            <div class="csv-format">
-              <h4>CSV Format Example:</h4>
-              <code
-                >name,grade,gender,math,reading,behavior,independence,iep,504,esl,gate,friends,incompatible
-                John Smith,1st,M,h,m,cooperative,high,n,n,n,n,"Jane Doe", Jane
-                Doe,Kindergarten,F,m,h,neutral,neutral,n,y,n,n,John Smith,
-                ...</code
-              >
-            </div>
-
             <div class="error-message" id="errorMessage"></div>
-          </div>
-
-          <div class="preview-panel" id="previewPanel">
-            <div class="preview-header">
-              <h4>Preview</h4>
-              <div class="preview-stats">
-                <span><span id="preview-total">0</span> students</span>
-                <span><span id="preview-grades-count">0</span> grades</span>
-              </div>
-            </div>
-            <div class="preview-grades" id="previewGrades">
-              <!-- Grade summary will appear here -->
-            </div>
           </div>
         </div>
 
@@ -969,16 +945,19 @@
             class="btn primary"
             id="confirmButton"
             onclick="confirmImport()"
-            disabled
           >
-            Confirm & Import →
+            Set up school year →
           </button>
         </div>
       </div>
     </div>
 
-    <script src="/static/js/sync-client.js"></script>
-    <script src="/static/js/homeroom-app.js?v=58"></script>
+    <script>
+      window.classifyUsername = {{ username | tojson }};
+      window.classifyIsAdmin  = {{ is_admin | tojson }};
+    </script>
+    <script src="/static/js/sync-client.js?v=4"></script>
+    <script src="/static/js/homeroom-app.js?v=80"></script>
     <script src="/static/js/transition.js?v=44"></script>
     <script src="/static/js/onboarding.js"></script>
     <script>

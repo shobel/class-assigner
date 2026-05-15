@@ -3,20 +3,34 @@ Class Assignment Optimizer - Web App
 Flask backend for the assignment tool
 """
 
-from flask import Flask, render_template, request, jsonify, send_file
+from flask import Flask, render_template, request, jsonify, send_file, session, redirect, url_for
 import json
 import math
 import os
 import sys
 import io
+import uuid
 import zipfile
 import socket
 import platform
+import sqlite3
+import secrets
 import pandas as pd
+from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime, timedelta
 import threading
-from functools import wraps
+from werkzeug.security import check_password_hash
+from werkzeug.security import generate_password_hash as _gen_hash
+
+def generate_password_hash(password):
+    return _gen_hash(password, method='pbkdf2:sha256')
+
+__version__ = '1.0.0'
+_UPDATE_URL = 'https://shobel.github.io/classify-website/releases/latest.json'
+
+# Sentinel stored in password column for accounts awaiting invite setup
+_INVITE_PENDING = '__invite_pending__'
 
 
 def get_resource_path(relative_path):
@@ -98,8 +112,15 @@ app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 DATA_DIR = get_data_dir()
 
-SCHOOL_YEARS_DIR = DATA_DIR / "school_years"
-SCHOOL_YEARS_DIR.mkdir(exist_ok=True)
+# SQLite database (single file, replaces all JSON files)
+DB_FILE = DATA_DIR / "classify.db"
+_db_write_lock = threading.Lock()
+
+# Legacy JSON paths — kept only for one-time migration detection
+_LEGACY_CONFIG_FILE   = DATA_DIR / "config.json"
+_LEGACY_HISTORY_FILE  = DATA_DIR / "history.json"
+_LEGACY_YEARS_DIR     = DATA_DIR / "school_years"
+_LEGACY_STUDENTS_FILE = DATA_DIR / "students.json"
 
 # ============================================================================
 # Multi-User Sync State
@@ -117,11 +138,188 @@ last_modified = {
 }
 sync_mutex = threading.Lock()
 
-CONFIG_FILE = DATA_DIR / "config.json"
+# Session registry: session_id -> display name (populated from lock acquire)
+session_registry = {}
 
-# Legacy files for migration
-STUDENTS_FILE = DATA_DIR / "students.json"
-ASSIGNMENTS_FILE = DATA_DIR / "assignments.json"
+
+# ============================================================================
+# Database Initialisation & Access
+# ============================================================================
+
+@contextmanager
+def get_db():
+    """Yield a SQLite connection with WAL mode and row_factory set."""
+    conn = sqlite3.connect(str(DB_FILE), check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+_SCHEMA_VERSION = 2  # Bump when schema changes
+
+def init_db():
+    """Create tables if they don't exist yet, and run incremental migrations."""
+    with get_db() as conn:
+        conn.executescript("""
+            CREATE TABLE IF NOT EXISTS config (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS school_years (
+                id   INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT UNIQUE NOT NULL
+            );
+
+            -- One row per grade per school year.
+            -- Complex / dynamic fields stored as JSON text columns.
+            CREATE TABLE IF NOT EXISTS grades (
+                id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+                school_year_id     INTEGER NOT NULL REFERENCES school_years(id) ON DELETE CASCADE,
+                name               TEXT    NOT NULL,
+                num_classes        INTEGER NOT NULL DEFAULT 5,
+                min_students       INTEGER NOT NULL DEFAULT 18,
+                max_students       INTEGER NOT NULL DEFAULT 26,
+                enforce_class_size INTEGER NOT NULL DEFAULT 0,
+                assignment_stale   INTEGER NOT NULL DEFAULT 0,
+                solver_status      TEXT,
+                solver_elapsed     REAL,
+                solver_combinations TEXT,
+                class_names        TEXT    NOT NULL DEFAULT '{}',
+                custom_rules       TEXT,
+                teachers           TEXT    NOT NULL DEFAULT '[]',
+                available_teachers TEXT    NOT NULL DEFAULT '[]',
+                assignment_config  TEXT,
+                students           TEXT    NOT NULL DEFAULT '[]',
+                assignments        TEXT    NOT NULL DEFAULT '[]',
+                solver_baseline    TEXT    NOT NULL DEFAULT '[]',
+                UNIQUE(school_year_id, name)
+            );
+
+            CREATE TABLE IF NOT EXISTS history (
+                id           TEXT PRIMARY KEY,
+                timestamp    TEXT NOT NULL,
+                session_name TEXT,
+                category     TEXT NOT NULL,
+                action       TEXT NOT NULL,
+                grade        TEXT,
+                details      TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS users (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                username   TEXT    UNIQUE NOT NULL,
+                password   TEXT,
+                is_admin   INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT    NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS invite_codes (
+                id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                code_hash  TEXT    NOT NULL,
+                expires_at TEXT    NOT NULL,
+                used_at    TEXT
+            );
+        """)
+
+    _run_migrations()
+
+
+def _run_migrations():
+    """Apply incremental schema migrations based on stored version."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT value FROM config WHERE key = 'schema_version'"
+        ).fetchone()
+        current = int(row['value']) if row else 1
+
+    if current >= _SCHEMA_VERSION:
+        return
+
+    with _db_write_lock:
+        with get_db() as conn:
+            if current < 2:
+                # v2: invite_codes table (already created above via IF NOT EXISTS)
+                # v2: users.password may need NOT NULL removed on old databases
+                cols = conn.execute("PRAGMA table_info(users)").fetchall()
+                pw_col = next((c for c in cols if c['name'] == 'password'), None)
+                if pw_col and pw_col['notnull']:
+                    # Recreate users table to drop NOT NULL on password.
+                    # Use legacy_alter_table so SQLite doesn't rewrite FK references
+                    # in other tables (e.g. invite_codes) to point at _users_old.
+                    conn.executescript("""
+                        PRAGMA legacy_alter_table = ON;
+                        ALTER TABLE users RENAME TO _users_old;
+                        CREATE TABLE users (
+                            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                            username   TEXT    UNIQUE NOT NULL,
+                            password   TEXT,
+                            is_admin   INTEGER NOT NULL DEFAULT 0,
+                            created_at TEXT    NOT NULL
+                        );
+                        INSERT INTO users (id, username, password, is_admin, created_at)
+                            SELECT id, username, password, is_admin, created_at FROM _users_old;
+                        DROP TABLE _users_old;
+                        PRAGMA legacy_alter_table = OFF;
+                    """)
+
+            conn.execute(
+                "INSERT OR REPLACE INTO config (key, value) VALUES ('schema_version', ?)",
+                (str(_SCHEMA_VERSION),)
+            )
+
+
+def _row_to_grade_data(row):
+    """Convert a grades table sqlite3.Row to a grade_data dict."""
+    return {
+        'num_classes':        row['num_classes'],
+        'min_students':       row['min_students'],
+        'max_students':       row['max_students'],
+        'enforce_class_size': bool(row['enforce_class_size']),
+        'assignment_stale':   bool(row['assignment_stale']),
+        'solver_status':      row['solver_status'],
+        'solver_elapsed':     row['solver_elapsed'],
+        'solver_combinations':row['solver_combinations'],
+        'class_names':        json.loads(row['class_names'] or '{}'),
+        'custom_rules':       json.loads(row['custom_rules']) if row['custom_rules'] else None,
+        'teachers':           json.loads(row['teachers'] or '[]'),
+        'available_teachers': json.loads(row['available_teachers'] or '[]'),
+        'assignment_config':  json.loads(row['assignment_config']) if row['assignment_config'] else None,
+        'students':           json.loads(row['students'] or '[]'),
+        'assignments':        json.loads(row['assignments'] or '[]'),
+        'solver_baseline':    json.loads(row['solver_baseline'] or '[]'),
+    }
+
+
+def _grade_data_params(grade_data):
+    """Return a tuple of all updateable grade_data values, in column order."""
+    return (
+        grade_data.get('num_classes', 5),
+        grade_data.get('min_students', 18),
+        grade_data.get('max_students', 26),
+        int(grade_data.get('enforce_class_size', False)),
+        int(grade_data.get('assignment_stale', False)),
+        grade_data.get('solver_status'),
+        grade_data.get('solver_elapsed'),
+        grade_data.get('solver_combinations'),
+        json.dumps(grade_data.get('class_names') or {}),
+        json.dumps(grade_data['custom_rules']) if grade_data.get('custom_rules') else None,
+        json.dumps(grade_data.get('teachers') or []),
+        json.dumps(grade_data.get('available_teachers') or []),
+        json.dumps(grade_data['assignment_config']) if grade_data.get('assignment_config') else None,
+        json.dumps(grade_data.get('students') or [], allow_nan=False),
+        json.dumps(grade_data.get('assignments') or [], allow_nan=False),
+        json.dumps(grade_data.get('solver_baseline') or [], allow_nan=False),
+    )
 
 
 # ============================================================================
@@ -132,57 +330,86 @@ def get_school_year():
     """Calculate current school year (e.g., 2025–26 if it's after July 2025)"""
     now = datetime.now()
     year = now.year
-    # School year starts in August/September, so if we're past July, it's the next school year
     if now.month >= 7:
         return f"{year}–{str(year + 1)[-2:]}"
     else:
         return f"{year - 1}–{str(year)[-2:]}"
 
 
-def get_school_year_file(school_year):
-    """Get the file path for a school year's data"""
-    # Sanitize the year string for filename (replace – with -)
-    safe_year = school_year.replace('–', '-')
-    return SCHOOL_YEARS_DIR / f"{safe_year}.json"
-
-
 def list_school_years():
-    """List all available school years"""
-    years = []
-    for file in SCHOOL_YEARS_DIR.glob("*.json"):
-        year_str = file.stem.replace('-', '–')
-        years.append(year_str)
-    return sorted(years)
+    """List all available school years from the database."""
+    with get_db() as conn:
+        rows = conn.execute("SELECT name FROM school_years ORDER BY name").fetchall()
+    return [r['name'] for r in rows]
 
 
 def load_school_year_data(school_year):
-    """Load data for a specific school year"""
-    file_path = get_school_year_file(school_year)
-    if file_path.exists():
-        with open(file_path, 'r') as f:
-            return json.load(f)
-    return {}
+    """Load all grade data for a school year as a dict keyed by grade name."""
+    with get_db() as conn:
+        sy = conn.execute(
+            "SELECT id FROM school_years WHERE name = ?", (school_year,)
+        ).fetchone()
+        if not sy:
+            return {}
+        rows = conn.execute(
+            "SELECT * FROM grades WHERE school_year_id = ?", (sy['id'],)
+        ).fetchall()
+    return {r['name']: _row_to_grade_data(r) for r in rows}
 
 
 def save_school_year_data(school_year, data):
-    """Save data for a specific school year"""
-    file_path = get_school_year_file(school_year)
-    with open(file_path, 'w') as f:
-        json.dump(data, f, indent=2, allow_nan=False)
+    """Persist the full grade dict for a school year to SQLite."""
+    with _db_write_lock:
+        with get_db() as conn:
+            # Ensure school year row exists
+            sy = conn.execute(
+                "SELECT id FROM school_years WHERE name = ?", (school_year,)
+            ).fetchone()
+            if sy:
+                sy_id = sy['id']
+            else:
+                conn.execute("INSERT INTO school_years (name) VALUES (?)", (school_year,))
+                sy_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
 
+            # Current grade names in DB
+            existing = {
+                r['name']: r['id']
+                for r in conn.execute(
+                    "SELECT id, name FROM grades WHERE school_year_id = ?", (sy_id,)
+                ).fetchall()
+            }
 
-def migrate_legacy_data(current_year):
-    """Migrate old students.json to new school year structure"""
-    if STUDENTS_FILE.exists():
-        # Load old data
-        old_data = load_students_data()
+            # Remove grades that are no longer in data
+            for name in list(existing):
+                if name not in data:
+                    conn.execute("DELETE FROM grades WHERE id = ?", (existing[name],))
 
-        # Save to current year
-        save_school_year_data(current_year, old_data)
-
-        # Rename old file to backup
-        STUDENTS_FILE.rename(DATA_DIR / "students.json.backup")
-        print(f"Migrated legacy data to {current_year}")
+            # Upsert each grade
+            for grade_name, grade_data in data.items():
+                params = _grade_data_params(grade_data)
+                if grade_name in existing:
+                    conn.execute("""
+                        UPDATE grades SET
+                            num_classes=?, min_students=?, max_students=?,
+                            enforce_class_size=?, assignment_stale=?,
+                            solver_status=?, solver_elapsed=?, solver_combinations=?,
+                            class_names=?, custom_rules=?,
+                            teachers=?, available_teachers=?,
+                            assignment_config=?, students=?, assignments=?, solver_baseline=?
+                        WHERE id=?
+                    """, params + (existing[grade_name],))
+                else:
+                    conn.execute("""
+                        INSERT INTO grades (
+                            school_year_id, name,
+                            num_classes, min_students, max_students,
+                            enforce_class_size, assignment_stale,
+                            solver_status, solver_elapsed, solver_combinations,
+                            class_names, custom_rules,
+                            teachers, available_teachers,
+                            assignment_config, students, assignments, solver_baseline
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """, (sy_id, grade_name) + params)
 
 
 def create_next_school_year(current_year):
@@ -235,6 +462,65 @@ def create_next_school_year(current_year):
     save_school_year_data(next_year, next_data)
 
     return next_year
+
+
+def migrate_from_json():
+    """One-time migration: import legacy JSON files into the SQLite database."""
+    migrated = False
+
+    # Config
+    if _LEGACY_CONFIG_FILE.exists():
+        try:
+            with open(_LEGACY_CONFIG_FILE) as f:
+                cfg = json.load(f)
+            save_config(cfg)
+            _LEGACY_CONFIG_FILE.rename(_LEGACY_CONFIG_FILE.with_suffix('.json.migrated'))
+            migrated = True
+        except Exception as e:
+            print(f"Warning: could not migrate config.json: {e}")
+
+    # School years
+    if _LEGACY_YEARS_DIR.exists():
+        for jf in _LEGACY_YEARS_DIR.glob("*.json"):
+            try:
+                year_str = jf.stem.replace('-', '–')
+                with open(jf) as f:
+                    data = json.load(f)
+                save_school_year_data(year_str, data)
+                jf.rename(jf.with_suffix('.json.migrated'))
+                migrated = True
+            except Exception as e:
+                print(f"Warning: could not migrate {jf.name}: {e}")
+
+    # History
+    if _LEGACY_HISTORY_FILE.exists():
+        try:
+            with open(_LEGACY_HISTORY_FILE) as f:
+                history = json.load(f)
+            with _db_write_lock:
+                with get_db() as conn:
+                    for entry in history:
+                        conn.execute(
+                            """INSERT OR IGNORE INTO history
+                               (id, timestamp, session_name, category, action, grade, details)
+                               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                            (
+                                entry.get('id', str(uuid.uuid4())),
+                                entry['timestamp'],
+                                entry.get('session_name'),
+                                entry['category'],
+                                entry['action'],
+                                entry.get('grade'),
+                                json.dumps(entry.get('details', {})),
+                            ),
+                        )
+            _LEGACY_HISTORY_FILE.rename(_LEGACY_HISTORY_FILE.with_suffix('.json.migrated'))
+            migrated = True
+        except Exception as e:
+            print(f"Warning: could not migrate history.json: {e}")
+
+    if migrated:
+        print("Migrated legacy JSON data to SQLite.")
 
 
 # ============================================================================
@@ -352,84 +638,98 @@ DEFAULT_CONFIG = {
 # ============================================================================
 
 def load_config():
-    """Load configuration or return default"""
-    if CONFIG_FILE.exists():
-        with open(CONFIG_FILE, 'r') as f:
-            config = json.load(f)
-    else:
-        config = DEFAULT_CONFIG.copy()
+    """Load configuration from SQLite, applying defaults and migrations."""
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT value FROM config WHERE key = 'config'"
+        ).fetchone()
+    config = json.loads(row['value']) if row else DEFAULT_CONFIG.copy()
 
-    # Migrate old config structure to new one
+    # Migrate old property names
     if 'properties' in config:
-        # Check if we need to migrate from old property structure
-        old_property_names = {p['name'] for p in config['properties']}
-        if 'problematic' in old_property_names or 'special_needs' in old_property_names:
-            # Replace with new structure
+        old_names = {p['name'] for p in config['properties']}
+        if 'problematic' in old_names or 'special_needs' in old_names:
             config['properties'] = DEFAULT_CONFIG['properties'].copy()
-            # Save the migrated config
             save_config(config)
 
-    # Ensure all properties have 'enabled' field
+    # Ensure enabled field on all properties
     for prop in config.get('properties', []):
         if 'enabled' not in prop:
             prop['enabled'] = True
 
-    # Ensure friends property exists (migration)
+    # Ensure friends / teacher_uniqueness properties exist
     if 'properties' in config:
-        existing_names = {p['name'] for p in config['properties']}
-        if 'friends' not in existing_names:
-            friends_prop = next((p for p in DEFAULT_CONFIG['properties'] if p['name'] == 'friends'), None)
-            if friends_prop:
-                config['properties'].append(friends_prop.copy())
-                save_config(config)
+        for prop_name in ('friends', 'teacher_uniqueness'):
+            if prop_name not in {p['name'] for p in config['properties']}:
+                default_prop = next(
+                    (p for p in DEFAULT_CONFIG['properties'] if p['name'] == prop_name), None
+                )
+                if default_prop:
+                    config['properties'].append(default_prop.copy())
+                    save_config(config)
 
-        # Ensure teacher_uniqueness property exists (migration)
-        existing_names = {p['name'] for p in config['properties']}
-        if 'teacher_uniqueness' not in existing_names:
-            tu_prop = next((p for p in DEFAULT_CONFIG['properties'] if p['name'] == 'teacher_uniqueness'), None)
-            if tu_prop:
-                config['properties'].append(tu_prop.copy())
-                save_config(config)
-
-    # Auto-fill school year if not set
     if not config.get('school_year'):
         config['school_year'] = get_school_year()
-
-    # Ensure school_name exists
     if not config.get('school_name'):
         config['school_name'] = 'School'
-
-    # Update available school years
-    config['available_school_years'] = list_school_years()
-
-    # Set active school year to current if not set
     if not config.get('active_school_year'):
         config['active_school_year'] = config['school_year']
 
-    # Migrate legacy data if exists
-    migrate_legacy_data(config['school_year'])
-
+    config['available_school_years'] = list_school_years()
     return config
 
 
 def save_config(config):
-    """Save configuration"""
-    with open(CONFIG_FILE, 'w') as f:
-        json.dump(config, f, indent=2)
+    """Persist configuration to SQLite (strips derived available_school_years)."""
+    to_save = {k: v for k, v in config.items() if k != 'available_school_years'}
+    with _db_write_lock:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO config (key, value) VALUES ('config', ?)",
+                (json.dumps(to_save),),
+            )
 
 
+# Legacy stubs — used by old /api/students routes that still reference STUDENTS_FILE.
+# These routes are effectively unused in the new UI but kept to avoid breaking anything.
 def load_students_data():
-    """Load all student data"""
-    if STUDENTS_FILE.exists():
-        with open(STUDENTS_FILE, 'r') as f:
+    if _LEGACY_STUDENTS_FILE.exists():
+        with open(_LEGACY_STUDENTS_FILE) as f:
             return json.load(f)
     return {}
 
-
 def save_students_data(data):
-    """Save student data"""
-    with open(STUDENTS_FILE, 'w') as f:
+    with open(_LEGACY_STUDENTS_FILE, 'w') as f:
         json.dump(data, f, indent=2)
+
+
+# ============================================================================
+# History / Action Log
+# ============================================================================
+
+def log_action(session_id, category, action, grade=None, details=None):
+    """Append an action entry to the history table, capped at 2000 rows."""
+    with _db_write_lock:
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO history (id, timestamp, session_name, category, action, grade, details)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    str(uuid.uuid4()),
+                    datetime.now().isoformat(),
+                    session_registry.get(session_id, 'Unknown'),
+                    category,
+                    action,
+                    grade,
+                    json.dumps(details or {}),
+                ),
+            )
+            # Keep only the 2000 most recent rows
+            conn.execute("""
+                DELETE FROM history WHERE id NOT IN (
+                    SELECT id FROM history ORDER BY timestamp DESC LIMIT 2000
+                )
+            """)
 
 
 # ============================================================================
@@ -447,50 +747,350 @@ def update_last_modified(changed_by=None, scope=None):
         }
 
 
-def require_lock(f):
-    """Decorator to require active lock for mutating operations"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        session_id = request.headers.get('X-Session-ID')
-        if not session_id:
-            return jsonify({'error': 'No session ID provided'}), 403
-
-        with lock_mutex:
-            # Check if lock is held by this session
-            if active_lock['session_id'] != session_id:
-                # Check if lock has expired
-                if active_lock['expires'] and datetime.fromisoformat(active_lock['expires']) < datetime.now():
-                    # Lock expired, allow operation
-                    pass
-                else:
-                    return jsonify({'error': 'Lock not held', 'message': f"Edit mode is held by {active_lock['held_by']}"}), 403
-
-        return f(*args, **kwargs)
-    return decorated_function
-
 
 def load_assignments_data():
-    """Load assignments"""
-    if ASSIGNMENTS_FILE.exists():
-        with open(ASSIGNMENTS_FILE, 'r') as f:
+    """Legacy stub — old assignments.json is no longer used."""
+    _legacy = DATA_DIR / "assignments.json"
+    if _legacy.exists():
+        with open(_legacy) as f:
             return json.load(f)
     return {}
 
 
 def save_assignments_data(data):
-    """Save assignments"""
-    with open(ASSIGNMENTS_FILE, 'w') as f:
-        json.dump(data, f, indent=2)
+    """Legacy stub — no-op under SQLite storage."""
+    pass
+
+
+# Initialise DB and migrate any legacy JSON files — runs once at startup.
+init_db()
+migrate_from_json()
+
+# Load or generate a persistent secret key for Flask sessions.
+def _get_or_create_secret_key():
+    with get_db() as conn:
+        row = conn.execute(
+            "SELECT value FROM config WHERE key = 'secret_key'"
+        ).fetchone()
+        if row:
+            return row['value']
+        key = secrets.token_hex(32)
+        conn.execute(
+            "INSERT INTO config (key, value) VALUES ('secret_key', ?)", (key,)
+        )
+    return key
+
+app.secret_key = _get_or_create_secret_key()
+
+# ============================================================================
+# Auth helpers
+# ============================================================================
+
+def _count_users():
+    with get_db() as conn:
+        return conn.execute("SELECT COUNT(*) FROM users").fetchone()[0]
+
+def _get_user_by_id(uid):
+    with get_db() as conn:
+        return conn.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+
+def current_user():
+    uid = session.get('user_id')
+    return _get_user_by_id(uid) if uid else None
+
+
+@app.before_request
+def require_login():
+    """Block unauthenticated access to everything except login and static files."""
+    public = {'login', 'logout', 'static', 'setup', 'admin_recovery'}
+    if request.endpoint in public:
+        return None
+    if not session.get('user_id'):
+        if request.path.startswith('/api/'):
+            return jsonify({'error': 'Not authenticated'}), 401
+        return redirect(url_for('login', next=request.path))
 
 
 # ============================================================================
 # Routes
 # ============================================================================
 
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page — also handles first-run account creation."""
+    is_setup = _count_users() == 0
+    error = None
+
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+
+        if is_setup:
+            # First run: create admin account
+            confirm = request.form.get('confirm_password', '')
+            if not username:
+                error = 'Username is required.'
+            elif len(password) < 6:
+                error = 'Password must be at least 6 characters.'
+            elif password != confirm:
+                error = 'Passwords do not match.'
+            else:
+                with _db_write_lock:
+                    with get_db() as conn:
+                        conn.execute(
+                            "INSERT INTO users (username, password, is_admin, created_at) VALUES (?, ?, 1, ?)",
+                            (username, generate_password_hash(password), datetime.now().isoformat())
+                        )
+                with get_db() as conn:
+                    user = conn.execute(
+                        "SELECT * FROM users WHERE username = ?", (username,)
+                    ).fetchone()
+                session.permanent = True
+                session['user_id'] = user['id']
+                session['username'] = user['username']
+                session['is_admin'] = bool(user['is_admin'])
+                return redirect(request.args.get('next') or '/')
+        else:
+            # Normal login
+            with get_db() as conn:
+                user = conn.execute(
+                    "SELECT * FROM users WHERE username = ?", (username,)
+                ).fetchone()
+            if user and user['password'] and user['password'] != _INVITE_PENDING and check_password_hash(user['password'], password):
+                remember = bool(request.form.get('remember'))
+                session.permanent = remember
+                session['user_id'] = user['id']
+                session['username'] = user['username']
+                session['is_admin'] = bool(user['is_admin'])
+                return redirect(request.args.get('next') or '/')
+            elif user and user['password'] == _INVITE_PENDING:
+                error = 'Account setup not complete. Use your invite code at /setup to set your password.'
+            else:
+                error = 'Invalid username or password.'
+
+    return render_template('login.html', is_setup=is_setup, error=error)
+
+
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return redirect(url_for('login'))
+
+
+# ============================================================================
+# User management API
+# ============================================================================
+
+@app.route('/api/users', methods=['GET'])
+def api_list_users():
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Admin only'}), 403
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT id, username, password, is_admin, created_at FROM users ORDER BY id"
+        ).fetchall()
+    return jsonify([{
+        'id': r['id'], 'username': r['username'],
+        'is_admin': bool(r['is_admin']), 'created_at': r['created_at'],
+        'has_password': bool(r['password'] and r['password'] != _INVITE_PENDING),
+    } for r in rows])
+
+
+@app.route('/api/users', methods=['POST'])
+def api_create_user():
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Admin only'}), 403
+    data = request.json or {}
+    username = data.get('username', '').strip()
+    is_admin = bool(data.get('is_admin', False))
+    if not username:
+        return jsonify({'error': 'username required'}), 400
+
+    # Generate a random invite code (user will set their own password on first login)
+    raw_code = secrets.token_urlsafe(12)  # ~16 chars, URL-safe
+    code_hash = generate_password_hash(raw_code)
+    expires_at = (datetime.now() + timedelta(days=7)).isoformat()
+
+    try:
+        with _db_write_lock:
+            with get_db() as conn:
+                conn.execute(
+                    "INSERT INTO users (username, password, is_admin, created_at) VALUES (?, ?, ?, ?)",
+                    (username, _INVITE_PENDING, int(is_admin), datetime.now().isoformat())
+                )
+                user_id = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()['id']
+                conn.execute(
+                    "INSERT INTO invite_codes (user_id, code_hash, expires_at) VALUES (?, ?, ?)",
+                    (user_id, code_hash, expires_at)
+                )
+        return jsonify({'status': 'success', 'invite_code': raw_code, 'username': username})
+    except sqlite3.IntegrityError:
+        return jsonify({'error': 'Username already exists'}), 409
+
+
+@app.route('/api/users/<int:user_id>', methods=['DELETE'])
+def api_delete_user(user_id):
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Admin only'}), 403
+    if user_id == session.get('user_id'):
+        return jsonify({'error': "Can't delete your own account"}), 400
+    with _db_write_lock:
+        with get_db() as conn:
+            conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    return jsonify({'status': 'success'})
+
+
+@app.route('/api/users/<int:user_id>/invite', methods=['POST'])
+def api_regenerate_invite(user_id):
+    """Generate a new invite code for a user (admin only)."""
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Admin only'}), 403
+    raw_code = secrets.token_urlsafe(12)
+    code_hash = generate_password_hash(raw_code)
+    expires_at = (datetime.now() + timedelta(days=7)).isoformat()
+    with _db_write_lock:
+        with get_db() as conn:
+            # Invalidate old unused codes for this user
+            conn.execute(
+                "DELETE FROM invite_codes WHERE user_id = ? AND used_at IS NULL", (user_id,)
+            )
+            conn.execute(
+                "INSERT INTO invite_codes (user_id, code_hash, expires_at) VALUES (?, ?, ?)",
+                (user_id, code_hash, expires_at)
+            )
+    return jsonify({'status': 'success', 'invite_code': raw_code})
+
+
+@app.route('/api/users/<int:user_id>/password', methods=['POST'])
+def api_change_password(user_id):
+    is_self = user_id == session.get('user_id')
+    is_admin = session.get('is_admin')
+    if not is_self and not is_admin:
+        return jsonify({'error': 'Forbidden'}), 403
+    data = request.json or {}
+    new_password = data.get('new_password', '')
+    if len(new_password) < 6:
+        return jsonify({'error': 'Password must be at least 6 characters'}), 400
+    if is_self and not is_admin:
+        # Require current password for non-admins changing their own
+        current = data.get('current_password', '')
+        with get_db() as conn:
+            user = conn.execute("SELECT password FROM users WHERE id = ?", (user_id,)).fetchone()
+        if not user or not check_password_hash(user['password'], current):
+            return jsonify({'error': 'Current password is incorrect'}), 400
+    with _db_write_lock:
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE users SET password = ? WHERE id = ?",
+                (generate_password_hash(new_password), user_id)
+            )
+    return jsonify({'status': 'success'})
+
+
+@app.route('/api/me', methods=['GET'])
+def api_me():
+    return jsonify({
+        'id': session.get('user_id'),
+        'username': session.get('username'),
+        'is_admin': session.get('is_admin', False),
+    })
+
+
+@app.route('/setup', methods=['GET', 'POST'])
+def setup():
+    """Teacher account setup via invite code."""
+    error = None
+    success = False
+
+    if request.method == 'POST':
+        code = request.form.get('code', '').strip()
+        password = request.form.get('password', '')
+        confirm = request.form.get('confirm_password', '')
+
+        if len(password) < 6:
+            error = 'Password must be at least 6 characters.'
+        elif password != confirm:
+            error = 'Passwords do not match.'
+        else:
+            # Find a matching unused, unexpired invite code
+            with get_db() as conn:
+                codes = conn.execute(
+                    "SELECT ic.id, ic.user_id, ic.code_hash FROM invite_codes ic "
+                    "WHERE ic.used_at IS NULL AND ic.expires_at > ?",
+                    (datetime.now().isoformat(),)
+                ).fetchall()
+
+            matched = None
+            for c in codes:
+                if check_password_hash(c['code_hash'], code):
+                    matched = c
+                    break
+
+            if not matched:
+                error = 'Invalid or expired invite code.'
+            else:
+                with _db_write_lock:
+                    with get_db() as conn:
+                        conn.execute(
+                            "UPDATE users SET password = ? WHERE id = ?",
+                            (generate_password_hash(password), matched['user_id'])
+                        )
+                        conn.execute(
+                            "UPDATE invite_codes SET used_at = ? WHERE id = ?",
+                            (datetime.now().isoformat(), matched['id'])
+                        )
+                success = True
+
+    return render_template('setup.html', error=error, success=success)
+
+
+@app.route('/admin-recovery', methods=['GET', 'POST'])
+def admin_recovery():
+    """Emergency admin password reset — only accessible from localhost."""
+    # Only allow access from the local machine
+    remote = request.remote_addr
+    if remote not in ('127.0.0.1', '::1', 'localhost'):
+        return "Access denied. This page is only available from the server machine.", 403
+
+    error = None
+    success = False
+
+    with get_db() as conn:
+        admins = conn.execute(
+            "SELECT id, username FROM users WHERE is_admin = 1 ORDER BY id"
+        ).fetchall()
+
+    if request.method == 'POST':
+        user_id = request.form.get('user_id', type=int)
+        password = request.form.get('password', '')
+        confirm = request.form.get('confirm_password', '')
+
+        if not user_id:
+            error = 'Select an admin account.'
+        elif len(password) < 6:
+            error = 'Password must be at least 6 characters.'
+        elif password != confirm:
+            error = 'Passwords do not match.'
+        else:
+            with _db_write_lock:
+                with get_db() as conn:
+                    conn.execute(
+                        "UPDATE users SET password = ? WHERE id = ? AND is_admin = 1",
+                        (generate_password_hash(password), user_id)
+                    )
+            success = True
+
+    return render_template('admin_recovery.html', admins=admins, error=error, success=success)
+
+
 @app.route('/')
 def index():
     """Main page"""
-    return render_template('homeroom.html')
+    return render_template(
+        'homeroom.html',
+        username=session.get('username', ''),
+        is_admin=session.get('is_admin', False),
+    )
 
 @app.route('/old')
 def old_index():
@@ -547,6 +1147,10 @@ def api_lock_acquire():
         return jsonify({'ok': False, 'error': 'No session ID provided'}), 400
     if not grade_id:
         return jsonify({'ok': False, 'error': 'No grade_id provided'}), 400
+
+    # Register session name for history logging
+    if held_by and held_by != 'Unknown':
+        session_registry[session_id] = held_by
 
     with lock_mutex:
         lock = active_locks.get(grade_id, {})
@@ -716,22 +1320,78 @@ def api_set_active_year(school_year):
     return jsonify({'status': 'success', 'active_school_year': school_year})
 
 
+@app.route('/api/school-years/import', methods=['POST'])
+def api_school_year_import():
+    """Bulk import students across multiple grades (admin only)."""
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Admin only'}), 403
+    data = request.json
+    grades_data = data.get('grades')  # { grade_name: [students] }
+    if not grades_data or not isinstance(grades_data, dict):
+        return jsonify({'error': 'Missing grades data'}), 400
+
+    config = load_config()
+    active_year = config.get('active_school_year', config['school_year'])
+
+    # Check for duplicate names within each grade
+    for grade_name, students in grades_data.items():
+        names = [s['name'] for s in students if s.get('name')]
+        if len(names) != len(set(names)):
+            dupes = [n for n in set(names) if names.count(n) > 1]
+            return jsonify({'error': f"Duplicate names in {grade_name}: {', '.join(dupes)}"}), 400
+
+    with _db_write_lock:
+        students_data = load_school_year_data(active_year)
+        for grade_name, students in grades_data.items():
+            if grade_name in students_data:
+                students_data[grade_name]['students'] = students
+                students_data[grade_name]['assignment_stale'] = True
+            else:
+                num_classes = 3 if grade_name == 'Kindergarten' else 5
+                avg = len(students) / num_classes if students else 20
+                students_data[grade_name] = {
+                    'students': students,
+                    'num_classes': num_classes,
+                    'min_students': max(1, int(avg * 0.8)),
+                    'max_students': int(avg * 1.2) + 2,
+                    'assignments': []
+                }
+        save_school_year_data(active_year, students_data)
+
+    total = sum(len(s) for s in grades_data.values())
+    return jsonify({'status': 'success', 'grades': len(grades_data), 'students': total})
+
+
+@app.route('/api/school-years/create', methods=['POST'])
+def api_create_school_year():
+    """Create an empty school year and set it as active (admin only)."""
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Admin only'}), 403
+    data = request.json
+    year = (data.get('year') or '').strip()
+    if not year:
+        return jsonify({'error': 'Missing year'}), 400
+    save_school_year_data(year, {})
+    config = load_config()
+    config['active_school_year'] = year
+    config['available_school_years'] = list_school_years()
+    save_config(config)
+    return jsonify({'status': 'success', 'year': year})
+
+
 @app.route('/api/school-years/<school_year>/clear', methods=['POST'])
 def api_clear_school_year(school_year):
     """Clear all data for a school year"""
-    # Delete the school year file entirely
-    file_path = get_school_year_file(school_year)
-    if file_path.exists():
-        file_path.unlink()
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Admin only'}), 403
+    with _db_write_lock:
+        with get_db() as conn:
+            conn.execute("DELETE FROM school_years WHERE name = ?", (school_year,))
 
-    # Update config
     config = load_config()
     config['available_school_years'] = list_school_years()
-
-    # If there are no more years, clear the active year
-    if len(config['available_school_years']) == 0:
+    if not config['available_school_years']:
         config['active_school_year'] = None
-
     save_config(config)
 
     return jsonify({'status': 'success'})
@@ -829,6 +1489,8 @@ def api_add_grade():
 @app.route('/api/grades/<grade_id>', methods=['DELETE'])
 def api_delete_grade(grade_id):
     """Delete a grade from the active school year"""
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Admin only'}), 403
     config = load_config()
     active_year = config.get('active_school_year', config['school_year'])
     students_data = load_school_year_data(active_year)
@@ -864,10 +1526,43 @@ def api_grade_students(grade_id):
     if not grade_name:
         return jsonify({'error': 'Grade not found'}), 404
 
+    grade_data = students_data[grade_name]
+
     if request.method == 'POST':
         # Update students
         data = request.json
         if 'students' in data:
+            names = [s['name'] for s in data['students'] if s.get('name')]
+            if len(names) != len(set(names)):
+                dupes = [n for n in set(names) if names.count(n) > 1]
+                return jsonify({'error': f"Duplicate student names: {', '.join(dupes)}"}), 400
+            old_students = {s['name']: s for s in grade_data.get('students', [])}
+            new_students = {s['name']: s for s in data['students']}
+            added = [n for n in new_students if n not in old_students]
+            removed = [n for n in old_students if n not in new_students]
+            edited = [n for n in new_students if n in old_students and new_students[n] != old_students[n]]
+            session_id = request.headers.get('X-Session-ID', '')
+            # Mark assignment stale when student data changes (not just adds,
+            # since adds surface as "unassigned" separately)
+            if edited or removed:
+                students_data[grade_name]['assignment_stale'] = True
+            if added:
+                log_action(session_id, 'students', 'add_student', grade_name, {'students': added})
+            if removed:
+                log_action(session_id, 'students', 'remove_student', grade_name, {'students': removed})
+            if edited:
+                edited_details = []
+                for n in edited:
+                    changes = []
+                    for k in set(list(old_students[n].keys()) + list(new_students[n].keys())):
+                        if k == 'name':
+                            continue
+                        old_v = old_students[n].get(k)
+                        new_v = new_students[n].get(k)
+                        if old_v != new_v:
+                            changes.append({'field': k, 'from': old_v, 'to': new_v})
+                    edited_details.append({'name': n, 'changes': changes})
+                log_action(session_id, 'students', 'edit_student', grade_name, {'students': edited_details})
             students_data[grade_name]['students'] = data['students']
             save_school_year_data(active_year, students_data)
             return jsonify({'status': 'success'})
@@ -910,14 +1605,34 @@ def api_grade_assignments(grade_id):
             # Only update revert point on explicit saves, not auto-saves from drag/drop
             if data.get('update_baseline', False):
                 students_data[grade_name]['solver_baseline'] = data['assignments'].copy()
+                # Manual save invalidates the solver's optimal claim
+                students_data[grade_name]['solver_status'] = None
+                # Rename flow saves baseline immediately after student rename — clear stale flag
+                students_data[grade_name]['assignment_stale'] = False
+                session_id = request.headers.get('X-Session-ID', '')
+                log_action(session_id, 'assignment', 'save_manual', grade_name)
             save_school_year_data(active_year, students_data)
             return jsonify({'status': 'success'})
         return jsonify({'error': 'No assignments data provided'}), 400
 
     # GET request
     grade_data = students_data[grade_name]
+
+    # Merge live student attributes into assignment data so analysis always reflects
+    # current student properties (IEP, gender, etc.), even if changed since last run.
+    students_by_name = {s['name']: s for s in grade_data.get('students', [])}
+    merged_assignments = []
+    for a in grade_data.get('assignments', []):
+        name = a.get('name')
+        if name in students_by_name:
+            merged = {**students_by_name[name], 'assigned_class': a.get('assigned_class'),
+                      'has_friend_in_class': a.get('has_friend_in_class')}
+        else:
+            merged = a  # student was removed from roster; keep stale entry
+        merged_assignments.append(merged)
+
     return jsonify({
-        'assignments': grade_data.get('assignments', []),
+        'assignments': merged_assignments,
         'solver_baseline': grade_data.get('solver_baseline', []),
         'num_classes': grade_data.get('num_classes', 5),
         'solver_status': grade_data.get('solver_status'),
@@ -925,6 +1640,7 @@ def api_grade_assignments(grade_id):
         'solver_combinations': grade_data.get('solver_combinations'),
         'class_names': grade_data.get('class_names', {}),
         'assignment_config': grade_data.get('assignment_config'),
+        'assignment_stale': grade_data.get('assignment_stale', False),
     })
 
 
@@ -974,10 +1690,26 @@ def api_grade_custom_rules(grade_id):
         return jsonify({'error': 'Grade not found'}), 404
 
     if request.method == 'POST':
-        # Save custom rules
+        # Save custom rules — diff to detect what changed
         data = request.json or {}
-        students_data[grade_name]['custom_rules'] = data.get('custom_rules', {})
+        new_rules = data.get('custom_rules', {})
+        old_rules = students_data[grade_name].get('custom_rules') or {}
+        old_props = {p['name']: p for p in (old_rules.get('properties') or [])}
+        new_props = {p['name']: p for p in (new_rules.get('properties') or [])}
+        changes = []
+        for name, prop in new_props.items():
+            old = old_props.get(name)
+            if old is None:
+                continue
+            if prop.get('enabled') != old.get('enabled'):
+                state = 'enabled' if prop.get('enabled') else 'disabled'
+                changes.append(f"{prop.get('display_name', name)} {state}")
+            elif prop.get('weight') != old.get('weight'):
+                changes.append(f"{prop.get('display_name', name)} weight {old.get('weight')}→{prop.get('weight')}")
+        students_data[grade_name]['custom_rules'] = new_rules
         save_school_year_data(active_year, students_data)
+        session_id = request.headers.get('X-Session-ID', '')
+        log_action(session_id, 'assignment', 'update_rules', grade_name, {'changes': changes})
         return jsonify({'status': 'success'})
 
     elif request.method == 'DELETE':
@@ -985,6 +1717,8 @@ def api_grade_custom_rules(grade_id):
         if 'custom_rules' in students_data[grade_name]:
             del students_data[grade_name]['custom_rules']
         save_school_year_data(active_year, students_data)
+        session_id = request.headers.get('X-Session-ID', '')
+        log_action(session_id, 'assignment', 'reset_rules', grade_name)
         return jsonify({'status': 'success'})
 
 
@@ -1005,8 +1739,11 @@ def api_save_class_names(grade_id):
         return jsonify({'error': 'Grade not found'}), 404
 
     data = request.json or {}
-    students_data[grade_name]['class_names'] = data.get('class_names', {})
+    new_names = data.get('class_names', {})
+    students_data[grade_name]['class_names'] = new_names
     save_school_year_data(active_year, students_data)
+    session_id = request.headers.get('X-Session-ID', '')
+    log_action(session_id, 'assignment', 'rename_classes', grade_name, {'class_names': new_names})
     return jsonify({'status': 'success'})
 
 
@@ -1029,6 +1766,9 @@ def api_update_grade_settings(grade_id):
 
     # Update settings
     data = request.json
+    session_id = request.headers.get('X-Session-ID', '')
+    grade_data = students_data[grade_name]
+
     if 'num_classes' in data:
         students_data[grade_name]['num_classes'] = data['num_classes']
     if 'min_students' in data:
@@ -1038,9 +1778,31 @@ def api_update_grade_settings(grade_id):
     if 'enforce_class_size' in data:
         students_data[grade_name]['enforce_class_size'] = data['enforce_class_size']
     if 'teachers' in data:
+        old_teachers = set(t.get('name', '') for t in (grade_data.get('teachers') or []))
+        new_teachers = set(t.get('name', '') for t in (data['teachers'] or []))
+        added = list(new_teachers - old_teachers)
+        removed = list(old_teachers - new_teachers)
+        if added:
+            log_action(session_id, 'teachers', 'add_teacher', grade_name, {'teachers': added})
+        if removed:
+            log_action(session_id, 'teachers', 'remove_teacher', grade_name, {'teachers': removed})
+        if not added and not removed and data['teachers'] != grade_data.get('teachers'):
+            log_action(session_id, 'teachers', 'update_teacher_assignments', grade_name)
         students_data[grade_name]['teachers'] = data['teachers']
     if 'available_teachers' in data:
+        old_avail = set(grade_data.get('available_teachers') or [])
+        new_avail = set(data['available_teachers'] or [])
+        added = list(new_avail - old_avail)
+        removed = list(old_avail - new_avail)
+        if added:
+            log_action(session_id, 'teachers', 'add_teacher', grade_name, {'teachers': added})
+        if removed:
+            log_action(session_id, 'teachers', 'remove_teacher', grade_name, {'teachers': removed})
         students_data[grade_name]['available_teachers'] = data['available_teachers']
+    if any(k in data for k in ('num_classes', 'min_students', 'max_students', 'enforce_class_size')):
+        log_action(session_id, 'assignment', 'update_settings', grade_name, {
+            k: data[k] for k in ('num_classes', 'min_students', 'max_students', 'enforce_class_size') if k in data
+        })
 
     save_school_year_data(active_year, students_data)
     return jsonify({'status': 'success'})
@@ -1048,27 +1810,34 @@ def api_update_grade_settings(grade_id):
 
 @app.route('/api/export-data', methods=['GET'])
 def api_export_data():
-    """Export all school data as a .classify zip file"""
+    """Export all school data as a .classify zip file (JSON format for portability)."""
+    config = load_config()
+    years  = list_school_years()
+
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
-        if CONFIG_FILE.exists():
-            zf.write(CONFIG_FILE, 'config.json')
-        if SCHOOL_YEARS_DIR.exists():
-            for f in SCHOOL_YEARS_DIR.glob('*.json'):
-                zf.write(f, f'school_years/{f.name}')
+        config_export = {k: v for k, v in config.items() if k != 'available_school_years'}
+        zf.writestr('config.json', json.dumps(config_export, indent=2))
+        for year in years:
+            data = load_school_year_data(year)
+            safe_year = year.replace('–', '-')
+            zf.writestr(
+                f'school_years/{safe_year}.json',
+                json.dumps(data, indent=2, allow_nan=False),
+            )
     buf.seek(0)
     timestamp = datetime.now().strftime('%Y%m%d')
     return send_file(
         buf,
         mimetype='application/zip',
         as_attachment=True,
-        download_name=f'classify-backup-{timestamp}.classify'
+        download_name=f'classify-backup-{timestamp}.classify',
     )
 
 
 @app.route('/api/import-data', methods=['POST'])
 def api_import_data():
-    """Import a .classify backup file, restoring all school data"""
+    """Import a .classify backup file, restoring all school data into SQLite."""
     if 'file' not in request.files:
         return jsonify({'error': 'No file provided'}), 400
     f = request.files['file']
@@ -1078,21 +1847,17 @@ def api_import_data():
         with zipfile.ZipFile(io.BytesIO(f.read())) as zf:
             names = zf.namelist()
             if 'config.json' in names:
-                # Preserve current activation status — don't overwrite it
-                current_config = {}
-                if CONFIG_FILE.exists():
-                    with open(CONFIG_FILE) as cf:
-                        current_config = json.load(cf)
+                current_config = load_config()
                 imported = json.loads(zf.read('config.json'))
+                # Preserve activation status
                 imported['activated'] = current_config.get('activated', False)
                 imported['activation_code'] = current_config.get('activation_code')
-                with open(CONFIG_FILE, 'w') as cf:
-                    json.dump(imported, cf, indent=2)
-            SCHOOL_YEARS_DIR.mkdir(exist_ok=True)
+                save_config(imported)
             for name in names:
                 if name.startswith('school_years/') and name.endswith('.json'):
-                    dest = SCHOOL_YEARS_DIR / Path(name).name
-                    dest.write_bytes(zf.read(name))
+                    year_str = Path(name).stem.replace('-', '–')
+                    data = json.loads(zf.read(name))
+                    save_school_year_data(year_str, data)
         return jsonify({'status': 'success'})
     except Exception as e:
         return jsonify({'error': f'Failed to import: {str(e)}'}), 400
@@ -1257,6 +2022,24 @@ def api_import_confirm():
         return jsonify({"error": str(e)}), 400
 
 
+@app.route('/api/history', methods=['GET'])
+def api_get_history():
+    """Return action history log (newest first)"""
+    with get_db() as conn:
+        rows = conn.execute(
+            "SELECT * FROM history ORDER BY timestamp DESC LIMIT 2000"
+        ).fetchall()
+    return jsonify([{
+        'id':           r['id'],
+        'timestamp':    r['timestamp'],
+        'session_name': r['session_name'],
+        'category':     r['category'],
+        'action':       r['action'],
+        'grade':        r['grade'],
+        'details':      json.loads(r['details']),
+    } for r in rows])
+
+
 @app.route('/api/assign/<grade_id>', methods=['POST'])
 def api_assign(grade_id):
     """Run the assignment solver for a grade"""
@@ -1349,11 +2132,11 @@ def api_assign(grade_id):
         students_data[grade_name]['solver_status'] = solver_result.get('status') if solver_result else None
         students_data[grade_name]['solver_elapsed'] = solver_result.get('elapsed') if solver_result else None
         students_data[grade_name]['solver_combinations'] = combinations
+        students_data[grade_name]['assignment_stale'] = False  # fresh run clears staleness
 
-        # Save a snapshot of the config at assignment time
-        config = load_config()
+        # Save a snapshot of the config at assignment time (use effective properties_config, not global)
         students_data[grade_name]['assignment_config'] = {
-            'properties': config.get('properties', []),
+            'properties': properties_config,
             'friend_weight': config.get('friend_weight', 30),
             'timestamp': pd.Timestamp.now().isoformat()
         }
@@ -1367,6 +2150,13 @@ def api_assign(grade_id):
         # Clean up temp files
         temp_input.unlink()
         temp_output.unlink()
+
+        session_id = request.headers.get('X-Session-ID', '')
+        log_action(session_id, 'assignment', 'run_optimizer', grade_name, {
+            'num_classes': num_classes,
+            'student_count': len(students),
+            'solver_status': solver_result.get('status') if solver_result else None,
+        })
 
         return jsonify({
             "status": "success",
@@ -1424,6 +2214,38 @@ def auto_detect_columns(csv_columns, property_names):
             break
 
     return mappings
+
+
+@app.route('/api/check-update')
+def api_check_update():
+    """Check for app updates by fetching the remote manifest."""
+    import urllib.request
+    try:
+        req = urllib.request.Request(_UPDATE_URL, headers={'User-Agent': f'Classify/{__version__}'})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+        latest = data.get('version', __version__)
+        if _version_tuple(latest) > _version_tuple(__version__):
+            system = platform.system()
+            url = data.get('mac_url') if system == 'Darwin' else data.get('windows_url', data.get('mac_url'))
+            return jsonify({
+                'update_available': True,
+                'current': __version__,
+                'latest': latest,
+                'download_url': url,
+                'notes': data.get('notes', ''),
+            })
+        return jsonify({'update_available': False, 'current': __version__})
+    except Exception:
+        return jsonify({'update_available': False, 'current': __version__})
+
+
+def _version_tuple(v):
+    """Parse '1.2.3' into (1, 2, 3) for comparison."""
+    try:
+        return tuple(int(x) for x in v.split('.'))
+    except (ValueError, AttributeError):
+        return (0, 0, 0)
 
 
 if __name__ == '__main__':

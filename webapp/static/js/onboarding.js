@@ -12,7 +12,7 @@ async function checkOnboarding() {
   const res = await fetch('/api/onboarding/status');
   const data = await res.json();
 
-  if (data.needs_onboarding) {
+  if (data.needs_onboarding && window.classifyIsAdmin) {
     // Pre-fill suggested year
     onboardingState.schoolYear = data.suggested_year;
     document.getElementById('onboarding-year').value = data.suggested_year;
@@ -285,48 +285,36 @@ function showPreview(roster, totalStudents) {
 
 async function confirmImport() {
   const yearInput = document.getElementById('onboarding-year').value.trim();
+  if (!yearInput) { showError('Please enter a school year'); return; }
 
-  if (!yearInput) {
-    showError('Please enter a school year');
-    return;
-  }
-
-  if (!onboardingState.parsedRoster || Object.keys(onboardingState.parsedRoster).length === 0) {
-    showError('Please upload a roster file first');
-    return;
-  }
-
-  document.getElementById('confirmButton').disabled = true;
-  document.getElementById('confirmButton').textContent = 'Importing...';
+  const btn = document.getElementById('confirmButton');
+  btn.disabled = true;
+  btn.textContent = 'Setting up…';
 
   try {
-    const res = await fetch('/api/onboarding/import-roster', {
+    const res = await fetch('/api/school-years/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        school_year: yearInput,
-        roster: onboardingState.parsedRoster
-      })
+      body: JSON.stringify({ year: yearInput })
     });
 
     if (res.ok) {
-      // Close onboarding
       document.getElementById('onboardingOverlay').classList.remove('open');
-
-      // Reload app
       await loadConfig();
       await loadGrades();
       showScreen('welcome');
+      // Open import wizard so they can import students right away
+      showImportModal('schoolYear');
     } else {
       const error = await res.json();
-      showError(error.error || 'Failed to import roster');
-      document.getElementById('confirmButton').disabled = false;
-      document.getElementById('confirmButton').textContent = 'Confirm & Import';
+      showError(error.error || 'Failed to create school year');
+      btn.disabled = false;
+      btn.textContent = 'Set up school year →';
     }
   } catch (err) {
     showError('Network error: ' + err.message);
-    document.getElementById('confirmButton').disabled = false;
-    document.getElementById('confirmButton').textContent = 'Confirm & Import';
+    btn.disabled = false;
+    btn.textContent = 'Set up school year →';
   }
 }
 
