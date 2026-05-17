@@ -20,6 +20,16 @@
     <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   </head>
   <body>
+    <!-- Bookmark reminder banner -->
+    <div id="bookmark-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9998;background:var(--ink);color:#fff;padding:9px 48px;font-size:13px;text-align:center;">
+      Bookmark this page so you can find it next time —
+      <span style="font-family:monospace;opacity:0.7;margin:0 4px;" id="bookmark-url"></span>
+      <button onclick="document.getElementById('bookmark-banner').style.display='none';localStorage.setItem('classify_bookmarked','1')"
+        style="margin-left:10px;background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:12px;padding:3px 10px;border-radius:4px;cursor:pointer;font-family:inherit;">Got it</button>
+      <button onclick="document.getElementById('bookmark-banner').style.display='none';localStorage.setItem('classify_bookmarked','1')"
+        style="position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;color:#fff;font-size:16px;cursor:pointer;opacity:0.5;">×</button>
+    </div>
+
     <!-- Update banner -->
     <div id="update-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:9999;background:var(--terra);color:#fff;padding:8px 16px;font-size:13px;text-align:center;">
       <span id="update-msg"></span>
@@ -146,6 +156,7 @@
             </svg>
             <span class="nav-label">Getting started</span>
           </div>
+          {% if is_admin %}
           <div class="nav-item" id="nav-config" onclick="showScreen('config')">
             <svg
               class="nav-icon"
@@ -179,6 +190,8 @@
             </svg>
             <span class="nav-label">School config</span>
           </div>
+          {% endif %}
+          {% if is_admin %}
           <div
             class="nav-item"
             id="nav-history"
@@ -189,7 +202,6 @@
             </svg>
             <span class="nav-label">History</span>
           </div>
-          {% if is_admin %}
           <div
             class="nav-item"
             id="nav-users"

@@ -65,6 +65,16 @@ def find_free_port():
         return s.getsockname()[1]
 
 
+def get_local_ip():
+    """Get the machine's local network IP address."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(('8.8.8.8', 80))
+            return s.getsockname()[0]
+    except Exception:
+        return '127.0.0.1'
+
+
 def format_combinations(n_students, n_classes):
     """Format the number of unordered partitions of n_students into n_classes unlabeled groups."""
     if n_students <= 0 or n_classes <= 1:
@@ -1208,7 +1218,7 @@ def api_lock_heartbeat():
 @app.route('/api/lock/release', methods=['POST'])
 def api_lock_release():
     """Release the edit lock for a grade (or all grades)"""
-    data = request.json or {}
+    data = request.get_json(force=True, silent=True) or {}
     session_id = data.get('session_id')
     grade_id = data.get('grade_id')
 
@@ -1302,24 +1312,6 @@ def api_school_years():
     })
 
 
-@app.route('/api/school-years/<school_year>/set-current', methods=['POST'])
-def api_set_current_year(school_year):
-    """Set the user-designated current school year (visual only)"""
-    config = load_config()
-    config['current_school_year'] = school_year
-    save_config(config)
-    return jsonify({'status': 'success', 'current_school_year': school_year})
-
-
-@app.route('/api/school-years/<school_year>', methods=['POST'])
-def api_set_active_year(school_year):
-    """Set the active school year for viewing"""
-    config = load_config()
-    config['active_school_year'] = school_year
-    save_config(config)
-    return jsonify({'status': 'success', 'active_school_year': school_year})
-
-
 @app.route('/api/school-years/import', methods=['POST'])
 def api_school_year_import():
     """Bulk import students across multiple grades (admin only)."""
@@ -1340,26 +1332,43 @@ def api_school_year_import():
             dupes = [n for n in set(names) if names.count(n) > 1]
             return jsonify({'error': f"Duplicate names in {grade_name}: {', '.join(dupes)}"}), 400
 
-    with _db_write_lock:
-        students_data = load_school_year_data(active_year)
-        for grade_name, students in grades_data.items():
-            if grade_name in students_data:
-                students_data[grade_name]['students'] = students
-                students_data[grade_name]['assignment_stale'] = True
-            else:
-                num_classes = 3 if grade_name == 'Kindergarten' else 5
-                avg = len(students) / num_classes if students else 20
-                students_data[grade_name] = {
-                    'students': students,
-                    'num_classes': num_classes,
-                    'min_students': max(1, int(avg * 0.8)),
-                    'max_students': int(avg * 1.2) + 2,
-                    'assignments': []
-                }
-        save_school_year_data(active_year, students_data)
+    students_data = load_school_year_data(active_year)
+    for grade_name, students in grades_data.items():
+        if grade_name in students_data:
+            students_data[grade_name]['students'] = students
+            students_data[grade_name]['assignment_stale'] = True
+        else:
+            num_classes = 3 if grade_name == 'Kindergarten' else 5
+            avg = len(students) / num_classes if students else 20
+            students_data[grade_name] = {
+                'students': students,
+                'num_classes': num_classes,
+                'min_students': max(1, int(avg * 0.8)),
+                'max_students': int(avg * 1.2) + 2,
+                'assignments': []
+            }
+    save_school_year_data(active_year, students_data)
 
     total = sum(len(s) for s in grades_data.values())
     return jsonify({'status': 'success', 'grades': len(grades_data), 'students': total})
+
+
+@app.route('/api/school-years/<school_year>/set-current', methods=['POST'])
+def api_set_current_year(school_year):
+    """Set the user-designated current school year (visual only)"""
+    config = load_config()
+    config['current_school_year'] = school_year
+    save_config(config)
+    return jsonify({'status': 'success', 'current_school_year': school_year})
+
+
+@app.route('/api/school-years/<school_year>', methods=['POST'])
+def api_set_active_year(school_year):
+    """Set the active school year for viewing"""
+    config = load_config()
+    config['active_school_year'] = school_year
+    save_config(config)
+    return jsonify({'status': 'success', 'active_school_year': school_year})
 
 
 @app.route('/api/school-years/create', methods=['POST'])
@@ -2216,6 +2225,24 @@ def auto_detect_columns(csv_columns, property_names):
     return mappings
 
 
+def get_local_ip():
+    """Get the machine's local network IP address."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.connect(('8.8.8.8', 80))
+            return s.getsockname()[0]
+    except Exception:
+        return '127.0.0.1'
+
+
+@app.route('/api/server-info')
+def api_server_info():
+    """Return local network URL so admins can share it with teachers."""
+    ip = get_local_ip()
+    port = request.host.split(':')[1] if ':' in request.host else '80'
+    return jsonify({'ip': ip, 'port': port, 'url': f'http://{ip}:{port}'})
+
+
 @app.route('/api/check-update')
 def api_check_update():
     """Check for app updates by fetching the remote manifest."""
@@ -2263,4 +2290,4 @@ if __name__ == '__main__':
         print("Access from this machine: http://localhost:5001")
         print("Access from other machines: http://[this-machine-ip]:5001")
         print("\nPress Ctrl+C to stop\n")
-        app.run(host='0.0.0.0', debug=True, port=5001)
+        app.run(host='0.0.0.0', debug=True, port=5001, threaded=True)

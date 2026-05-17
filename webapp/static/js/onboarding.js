@@ -207,15 +207,15 @@ function parseRosterCSV(csvText) {
 function normalizeGradeName(grade) {
   const g = grade.toLowerCase().replace(/[^a-z0-9]/g, '');
 
-  if (g.includes('k') || g.includes('kindergarten') || g === '0') return 'Kindergarten';
-  if (g === '1' || g === '1st' || g === 'first') return '1st Grade';
-  if (g === '2' || g === '2nd' || g === 'second') return '2nd Grade';
-  if (g === '3' || g === '3rd' || g === 'third') return '3rd Grade';
-  if (g === '4' || g === '4th' || g === 'fourth') return '4th Grade';
-  if (g === '5' || g === '5th' || g === 'fifth') return '5th Grade';
-  if (g === '6' || g === '6th' || g === 'sixth') return '6th Grade';
-  if (g === '7' || g === '7th' || g === 'seventh') return '7th Grade';
-  if (g === '8' || g === '8th' || g === 'eighth') return '8th Grade';
+  if (g.includes('k') || g === '0') return 'Kindergarten';
+  if (g === '1' || g === '1st' || g.includes('first')) return '1st Grade';
+  if (g === '2' || g === '2nd' || g.includes('second')) return '2nd Grade';
+  if (g === '3' || g === '3rd' || g.includes('third')) return '3rd Grade';
+  if (g === '4' || g === '4th' || g.includes('fourth')) return '4th Grade';
+  if (g === '5' || g === '5th' || g.includes('fifth')) return '5th Grade';
+  if (g === '6' || g === '6th' || g.includes('sixth')) return '6th Grade';
+  if (g === '7' || g === '7th' || g.includes('seventh')) return '7th Grade';
+  if (g === '8' || g === '8th' || g.includes('eighth')) return '8th Grade';
 
   return null;
 }
@@ -303,7 +303,8 @@ async function confirmImport() {
       await loadConfig();
       await loadGrades();
       showScreen('welcome');
-      // Open import wizard so they can import students right away
+      // Show server URL modal before import wizard
+      await showServerUrlModal();
       showImportModal('schoolYear');
     } else {
       const error = await res.json();
@@ -316,6 +317,51 @@ async function confirmImport() {
     btn.disabled = false;
     btn.textContent = 'Set up school year →';
   }
+}
+
+async function showServerUrlModal() {
+  let url = window.location.origin;
+  try {
+    const r = await fetch('/api/server-info');
+    if (r.ok) {
+      const d = await r.json();
+      url = d.url;
+    }
+  } catch (_) {}
+
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:9999;display:flex;align-items:center;justify-content:center;';
+
+    const card = document.createElement('div');
+    card.style.cssText = 'background:var(--bg);border:1px solid var(--line);border-radius:var(--rad-lg);padding:32px 36px;max-width:420px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.12);';
+
+    const mailtoBody = encodeURIComponent(`Hi,\n\nYou can access the class assignment tool at:\n${url}\n\nLog in with the credentials your admin set up for you.`);
+    const mailtoLink = `mailto:?subject=${encodeURIComponent('Your class assignment tool access link')}&body=${mailtoBody}`;
+
+    card.innerHTML = `
+      <div style="font-family:'Instrument Serif',serif;font-style:italic;font-size:22px;margin-bottom:6px;">You're all set!</div>
+      <div style="font-size:13px;color:var(--ink-3);margin-bottom:20px;line-height:1.5;">
+        Share this address with your teachers so they can access Classify from any device on your school network.
+      </div>
+      <div style="background:var(--bg-2);border:1px solid var(--line);border-radius:var(--rad);padding:10px 14px;font-family:'JetBrains Mono',monospace;font-size:14px;display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:16px;">
+        <span id="srv-url-text" style="word-break:break-all;">${url}</span>
+        <button onclick="navigator.clipboard.writeText('${url}').then(()=>{this.textContent='Copied!';setTimeout(()=>{this.textContent='Copy'},1500)})" style="flex-shrink:0;padding:4px 10px;background:var(--terra);color:#fff;border:none;border-radius:var(--rad);font-size:12px;cursor:pointer;font-family:inherit;">Copy</button>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <a href="${mailtoLink}" style="flex:1;text-align:center;padding:9px;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--rad);font-size:13px;color:var(--ink-2);text-decoration:none;cursor:pointer;">✉ Email teachers</a>
+        <button id="srv-url-done" style="flex:1;padding:9px;background:var(--terra);color:#fff;border:none;border-radius:var(--rad);font-size:13px;font-weight:500;cursor:pointer;font-family:inherit;">Continue →</button>
+      </div>
+    `;
+
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    document.getElementById('srv-url-done').addEventListener('click', () => {
+      overlay.remove();
+      resolve();
+    });
+  });
 }
 
 function showError(message) {

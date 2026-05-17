@@ -132,6 +132,7 @@
 
       {% if admins %}
       <form method="POST" action="/admin-recovery">
+        <a href="/login" style="display:inline-block;margin-bottom:16px;font-size:13px;color:var(--ink-3);text-decoration:none;">← Back to sign in</a>
         <label for="user_id">Admin account</label>
         <select id="user_id" name="user_id" required>
           <option value="">Select an account…</option>

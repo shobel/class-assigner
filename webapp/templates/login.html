@@ -133,6 +133,14 @@
           {% if is_setup %}Create account{% else %}Sign in{% endif %}
         </button>
       </form>
+
+      {% if not is_setup %}
+      <div style="margin-top:16px;font-size:12px;color:var(--ink-4);text-align:center;line-height:1.8;">
+        Have an invite code? <a href="/setup" style="color:var(--terra);text-decoration:none;">Set up your account</a><br>
+        Admin? <a href="/admin-recovery" style="color:var(--terra);text-decoration:none;">Reset your password</a> from the server machine.<br>
+        Teacher? Contact your admin to send you a new invite link.
+      </div>
+      {% endif %}
     </div>
   </body>
 </html>

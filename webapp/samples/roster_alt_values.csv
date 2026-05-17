@@ -1,0 +1,21 @@
+First Name,Last Name,Grade,Gender,Behavior,Independence,Math Level,Reading Level,IEP,Friends,Cannot Be With
+Emma,Alvarez,3rd Grade,Female,Star Student,Strong,Excelling,On Track,No,,
+Liam,Brennan,3rd Grade,Male,Needs Watching,Weak,Struggling,Struggling,Yes,,Emma Alvarez
+Sofia,Chen,3rd Grade,Female,Typical,Medium,On Track,Excelling,No,Liam Brennan,
+Jackson,Diaz,3rd Grade,Male,Typical,Strong,On Track,On Track,No,,
+Aisha,Evans,3rd Grade,Female,Challenging,Weak,Struggling,On Track,Yes,,Jackson Diaz
+Noah,Flores,3rd Grade,Male,Star Student,Medium,Excelling,Excelling,No,,
+Chloe,Garcia,3rd Grade,Female,Needs Watching,Medium,On Track,Struggling,No,Aisha Evans,
+Marcus,Harris,3rd Grade,Male,Challenging,Strong,Struggling,Struggling,Yes,,
+Priya,Ito,3rd Grade,Female,Typical,Weak,Excelling,On Track,No,,Marcus Harris
+Derek,Johnson,3rd Grade,Male,Star Student,Strong,On Track,Excelling,No,,
+Aaliya,Kim,4th Grade,Female,Typical,Medium,On Track,On Track,No,,
+Ben,Lopez,4th Grade,Male,Star Student,Strong,Excelling,Excelling,No,Aaliya Kim,
+Clara,Martinez,4th Grade,Female,Challenging,Weak,Struggling,Struggling,Yes,,Ben Lopez
+Elijah,Nguyen,4th Grade,Male,Needs Watching,Medium,On Track,On Track,No,,
+Fatima,Okafor,4th Grade,Female,Star Student,Strong,Excelling,On Track,No,,
+George,Park,4th Grade,Male,Typical,Weak,Struggling,On Track,Yes,,Fatima Okafor
+Hannah,Quinn,4th Grade,Female,Needs Watching,Strong,On Track,Excelling,No,Elijah Nguyen,
+Isaac,Rivera,4th Grade,Male,Challenging,Medium,Struggling,Struggling,Yes,,Hannah Quinn
+Julia,Santos,4th Grade,Female,Typical,Strong,On Track,On Track,No,,
+Kevin,Torres,4th Grade,Male,Star Student,Weak,Excelling,Excelling,No,Julia Santos,

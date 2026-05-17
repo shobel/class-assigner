@@ -277,6 +277,16 @@ async function startApp() {
   await loadConfig();
   await loadGrades();
   showScreen("welcome");
+  // Show bookmark reminder once
+  if (!localStorage.getItem('classify_bookmarked')) {
+    const banner = document.getElementById('bookmark-banner');
+    const urlEl = document.getElementById('bookmark-url');
+    if (banner && urlEl) {
+      urlEl.textContent = window.location.host;
+      banner.style.display = '';
+    }
+  }
+
   // Check for updates in background (non-blocking)
   checkForUpdate();
 }
@@ -910,13 +920,23 @@ function renderWelcomeScreen() {
   const totalStudents = grades.reduce((sum, g) => sum + g.students, 0);
   const totalGrades = grades.length;
 
-  if (totalGrades === 0 && !window.classifyIsAdmin) {
+  if (totalGrades === 0) {
+    if (!window.classifyIsAdmin) {
+      return `
+        <div class="welcome">
+          <h1>Nothing here yet.</h1>
+          <p class="lede" style="max-width:480px;">
+            Your admin hasn't set up this school year yet. Check back soon — once grades are imported you'll see them here.
+          </p>
+        </div>`;
+    }
     return `
       <div class="welcome">
-        <h1>Nothing here yet.</h1>
+        <h1>Ready to import students?</h1>
         <p class="lede" style="max-width:480px;">
-          Your admin hasn't set up this school year yet. Check back soon — once grades are imported you'll see them here.
+          No grades have been set up yet. Import your student roster to get started — we'll walk you through mapping your columns and values.
         </p>
+        <button class="btn terra" style="margin-top:8px;" onclick="showImportModal('schoolYear')">Import student roster</button>
       </div>`;
   }
 
@@ -1300,6 +1320,7 @@ async function submitCreateUser() {
       </div>
       <div id="copyConfirm" style="text-align:center;font-size:12px;color:var(--ink-4);margin-bottom:16px;">Click the code to copy</div>
       <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <a class="btn ghost" href="${_inviteMailto(d.username, d.invite_code, setupUrl)}" target="_blank">Send via email</a>
         <button class="btn primary" onclick="this.closest('[style*=fixed]').remove(); showScreen('users');">Done</button>
       </div>
     `;
@@ -1315,6 +1336,18 @@ async function submitCreateUser() {
   }
 }
 window.submitCreateUser = submitCreateUser;
+
+function _inviteMailto(username, code, setupUrl) {
+  const subject = encodeURIComponent('Your Classify invite');
+  const body = encodeURIComponent(
+    `Hi ${username},\n\nYou've been invited to Classify. Follow these steps to set up your account:\n\n` +
+    `1. Go to: ${setupUrl}\n` +
+    `2. Enter your invite code: ${code}\n` +
+    `3. Choose a password\n\n` +
+    `Your invite code expires in 7 days.\n\nWelcome aboard!`
+  );
+  return `mailto:?subject=${subject}&body=${body}`;
+}
 
 async function deleteUser(id, username) {
   if (!confirm(`Remove ${username}? They will no longer be able to sign in.`)) return;
@@ -1346,7 +1379,8 @@ async function regenerateInvite(userId, username) {
         ${d.invite_code}
       </div>
       <div id="reCopyConfirm" style="text-align:center;font-size:12px;color:var(--ink-4);margin-bottom:16px;">Click the code to copy</div>
-      <div style="display:flex;justify-content:flex-end;">
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <a class="btn ghost" href="${_inviteMailto(username, d.invite_code, setupUrl)}" target="_blank">Send via email</a>
         <button class="btn primary" onclick="this.closest('[style*=fixed]').remove()">Done</button>
       </div>
     </div>`;
@@ -4600,48 +4634,91 @@ const _IMP_FIELDS = [
 ];
 
 const _IMP_COL_PATTERNS = {
-  name:         ['name','student','student name','full name','student_name','fullname','legal name','last, first','first last'],
-  grade:        ['grade','grade level','homeroom','class','gradelevel'],
-  gender:       ['gender','sex','gender identity'],
-  behavior:     ['behavior','behaviour','conduct','beh','behavior code','beh code','behavioral'],
-  independence: ['independence','independent','indep','self-directed','self directed'],
-  iep:          ['iep','special ed','sped','special education','spec ed','individualized education'],
-  '504':        ['504','504 plan','section 504'],
-  esl:          ['esl','ell','english learner','english language','language learner','english language learner'],
-  gate:         ['gate','gifted','tag','talented','gate/gifted','gifted and talented'],
-  math:         ['math','mathematics','math level','math_level','math perf','math performance','math score','math achievement'],
-  reading:      ['reading','read','ela','reading level','reading_level','reading perf','reading score','literacy','reading achievement'],
-  friends:      ['friends','friend','friend list','requests with','friend_requests','request','friend request','friend requests'],
-  incompatible: ['incompatible','separate','cannot be with','keep apart','conflict','do not place','no with','keep separate'],
+  name:         ['name','student','student name','full name','student_name','fullname','legal name','pupil name','last, first','first last'],
+  grade:        ['grade','grade level','homeroom','class','gradelevel','grade_level','enrolled grade','school grade','current grade'],
+  gender:       ['gender','sex','biological sex','reported sex','gender identity','gender code','student gender','sex code'],
+  behavior:     ['behavior','behaviour','conduct','beh','behavior code','beh code','behavioral','citizenship','school citizenship','classroom behavior','responsible behavior','cooperation','self-control','work habits','effort'],
+  independence: ['independence','independent','indep','self-directed','self directed','self-direction','self-management','self-regulation','study skills','initiative','task completion','executive functioning','self-monitoring','works independently'],
+  iep:          ['iep','special ed','sped','special education','spec ed','individualized education','special needs','disability status','exceptionality','ese','exceptional learner','specialized services','services received','specialized instruction'],
+  '504':        ['504','504 plan','section 504','has 504','accommodation plan'],
+  esl:          ['esl','ell','el','mll','lep','english learner','english language','language learner','english language learner','el status','ell status','english proficiency','language program','bilingual','newcomer','language support','title iii','multilingual'],
+  gate:         ['gate','gifted','tag','talented','gate/gifted','gifted and talented','academically gifted','advanced learner','enrichment'],
+  math:         ['math','mathematics','math level','math_level','math perf','math performance','math score','math achievement','math proficiency','mathematics level','math performance level','math benchmark','numeracy','math skill'],
+  reading:      ['reading','read','ela','reading level','reading_level','reading perf','reading score','literacy','reading achievement','reading proficiency','ela level','reading performance level','reading benchmark','literacy level','language arts','reading skill','reading band'],
+  friends:      ['friends','friend','friend list','requests with','friend_requests','request','friend request','friend requests','place with','together with','pair with'],
+  incompatible: ['incompatible','separate','cannot be with','keep apart','conflict','do not place','no with','keep separate','separate from','not with','avoid','apart from','not together','cannot with'],
 };
 
 function _impSuggest(field, raw) {
   const v = (raw == null ? '' : String(raw)).toLowerCase().trim();
   if (field.type === 'boolean') {
-    if (['y','yes','1','true','x','✓'].includes(v)) return 'true';
-    if (['n','no','0','false','-','none',''].includes(v)) return 'false';
+    if (['y','yes','1','true','x','✓','active','identified','*','iep','ell','el','esl','gate'].includes(v)) return 'true';
+    if (['n','no','0','false','-','none','','inactive','not identified','eo','non-el','fluent','fep','rfep'].includes(v)) return 'false';
     return null;
   }
   if (field.type === 'choice') {
     const k = field.key;
     if (k === 'gender') {
-      if (['f','female','girl','g','woman','w'].includes(v)) return 'g';
-      if (['m','male','boy','b','man'].includes(v)) return 'b';
+      if (['f','female','girl','g','woman','w','girls'].includes(v)) return 'g';
+      if (['m','male','boy','b','man','boys'].includes(v)) return 'b';
     } else if (k === 'behavior') {
-      if (['cooperative','c','good','positive','1','low concern','low','never'].includes(v)) return 'cooperative';
-      if (['neutral','n','2','average','typical','moderate','mod','sometimes','occasional'].includes(v)) return 'neutral';
-      if (['disruptive','d','challenging','problematic','bad','3','concern','high concern','high','difficult','frequent','always'].includes(v)) return 'disruptive';
+      // Outstanding / Cooperative — best behavior
+      if (['cooperative','c','good','positive','low concern','never',
+           'outstanding','excellent','exemplary','exceeds expectations',
+           'distinguished','model','consistently demonstrates',
+           'star student','always'].includes(v)) return 'cooperative';
+      // Neutral / Satisfactory
+      if (['neutral','n','2','average','typical','moderate','mod','sometimes','occasional',
+           'satisfactory','adequate','appropriate','on track','usually',
+           'acceptable','meets expectations','usually demonstrates'].includes(v)) return 'neutral';
+      // Disruptive / Concern
+      if (['disruptive','d','challenging','problematic','bad','concern','high concern',
+           'difficult','frequent','3','high',
+           'unsatisfactory','poor','rarely','significant concern','below expectations',
+           'needs watching','ni','needs improvement','inconsistent'].includes(v)) return 'disruptive';
     } else if (k === 'independence') {
-      if (['high','h','3','independent','very independent','self-directed','self directed'].includes(v)) return 'high';
-      if (['neutral','n','2','average','typical','moderate','some support'].includes(v)) return 'neutral';
-      if (['low','l','1','dependent','needs support','supported','high support'].includes(v)) return 'low';
+      // High independence
+      if (['high','h','3','independent','very independent','self-directed','self directed',
+           'strong','4','always','self-managing','independent learner'].includes(v)) return 'high';
+      // Neutral / Adequate
+      if (['neutral','2','average','typical','moderate','some support',
+           'satisfactory','adequate','usually','approaching independence',
+           'approaching','usually demonstrates'].includes(v)) return 'neutral';
+      // Low independence
+      if (['low','l','1','dependent','needs support','supported','high support',
+           'weak','rarely','never','emerging','not yet','significant support',
+           'beginning','rarely demonstrates'].includes(v)) return 'low';
     } else if (k === 'math' || k === 'reading') {
-      if (['h','high','3','advanced','above','above grade','proficient+','exceeds','exceeds standards','4'].includes(v)) return 'h';
-      if (['m','medium','mid','2','proficient','on grade','grade level','on','meets','meets standards'].includes(v)) return 'm';
-      if (['l','low','1','basic','below','below grade','needs improvement','ni','approaching','does not meet','approaching standards'].includes(v)) return 'l';
+      // High / Advanced
+      if (['h','high','advanced','above','above grade','proficient+','exceeds',
+           'exceeds standards','4','standard exceeded','above grade level','agl',
+           'distinguished','mastery','mastered','well above benchmark','above benchmark',
+           'honors','adv'].includes(v)) return 'h';
+      // Medium / Proficient
+      if (['m','medium','mid','proficient','on grade','grade level','on','meets',
+           'meets standards','2','3','at grade level','benchmark','ogl','low risk',
+           'standard met','at benchmark'].includes(v)) return 'm';
+      // Low / Below
+      if (['l','low','1','basic','below','below grade','needs improvement','ni',
+           'approaching','does not meet','approaching standards','developing',
+           'below basic','bgl','below grade level','at risk','intensive','emerging',
+           'not yet ready','not meeting','strategic','some risk','nearly met',
+           'standard nearly met','partially meets','beginning',
+           'far below','far below basic','well below','well below benchmark',
+           'fbb','0','not yet','below benchmark','approaching proficient'].includes(v)) return 'l';
     }
   }
   return null;
+}
+
+const _GRADE_OPTIONS = ['Kindergarten','1st Grade','2nd Grade','3rd Grade','4th Grade','5th Grade','6th Grade','7th Grade','8th Grade'];
+
+function _impUnrecognizedGrades(state) {
+  if (state.mode !== 'schoolYear') return [];
+  const gradeCol = state.colMappings['grade'];
+  if (!gradeCol) return [];
+  const vals = _impUniqueVals(state.rawRows, gradeCol);
+  return vals.filter(v => !normalizeGradeName(v));
 }
 
 function _impAutoDetect(csvColumns) {
@@ -4728,7 +4805,7 @@ function _impBuildStudents(state) {
 let _impState = null;
 
 function showImportModal(mode) {
-  _impState = { step:1, mode: mode || 'grade', rawRows:[], columns:[], colMappings:{}, valMappings:{} };
+  _impState = { step:1, mode: mode || 'grade', rawRows:[], columns:[], colMappings:{}, valMappings:{}, gradeMapping:{} };
   _impRender();
   document.getElementById('importModal').classList.add('open');
 }
@@ -4842,7 +4919,8 @@ function _impStep2Next() {
       }
     }
   }
-  _impState.step = _impAllRecognized(vf) ? 4 : 3;
+  const hasUnrecognizedGrades = _impUnrecognizedGrades(_impState).length > 0;
+  _impState.step = (_impAllRecognized(vf) && !hasUnrecognizedGrades) ? 4 : 3;
   _impRender();
 }
 
@@ -4883,11 +4961,36 @@ function _impStep3HTML() {
       </div>`;
   }).join('');
 
+  const unrecogGrades = _impUnrecognizedGrades(s);
+  const gradeSection = unrecogGrades.length ? `
+    <div style="margin-bottom:20px;">
+      <div style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px;">
+        GRADE <span style="font-weight:400;text-transform:none;font-size:11px;color:var(--ink-4);">from column "${escAttr(s.colMappings['grade'])}"</span>
+      </div>
+      <table style="width:100%;border-collapse:collapse;border:1px solid var(--line);border-radius:var(--rad);overflow:hidden;">
+        <tbody>${unrecogGrades.map(raw => {
+          const current = s.gradeMapping[raw] || '';
+          return `<tr>
+            <td style="padding:8px 14px;font-size:13px;font-family:var(--t-mono);color:var(--ink);border-top:1px solid var(--line-soft);">${escAttr(raw)}</td>
+            <td style="padding:8px 8px;color:var(--ink-4);border-top:1px solid var(--line-soft);">→</td>
+            <td style="padding:8px 14px;border-top:1px solid var(--line-soft);">
+              <select onchange="_impState.gradeMapping[${JSON.stringify(raw)}]=this.value"
+                style="padding:5px 8px;border:1px solid ${current?'var(--line)':'var(--terra)'};border-radius:var(--rad);font-size:13px;font-family:inherit;background:var(--bg);color:var(--ink);">
+                <option value="">— choose grade —</option>
+                ${_GRADE_OPTIONS.map(g=>`<option value="${escAttr(g)}" ${g===current?'selected':''}>${escAttr(g)}</option>`).join('')}
+              </select>
+            </td>
+            <td style="padding:8px 4px;font-size:11px;color:${current?'transparent':'var(--terra)'};border-top:1px solid var(--line-soft);">needs mapping</td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div>` : '';
+
   return `
     <div style="font-size:13px;color:var(--ink-3);margin-bottom:16px;">
       We couldn't automatically recognize these values. Choose what each one means.
     </div>
-    <div style="max-height:380px;overflow-y:auto;">${sections}</div>
+    <div style="max-height:380px;overflow-y:auto;">${gradeSection}${sections}</div>
     <div id="imp-err" style="margin-top:10px;font-size:13px;color:var(--rose);display:none;"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
       <button class="btn ghost" onclick="_impState.step=2;_impRender()">Back</button>
@@ -4909,6 +5012,10 @@ function _impStep3Next() {
       }
     }
   }
+  const unmappedGrades = _impUnrecognizedGrades(_impState).filter(g => !_impState.gradeMapping[g]);
+  if (unmappedGrades.length) {
+    _impShowErr(`Please map all grade values before continuing: ${unmappedGrades.join(', ')}`); return;
+  }
   _impState.step = 4;
   _impRender();
 }
@@ -4916,13 +5023,15 @@ function _impStep3Next() {
 function _impStep4HTML() {
   const s = _impState;
   const mappedFields = _impAllFields().filter(f => f.key==='name' || s.colMappings[f.key]);
-  const backStep = _impAllRecognized(_impValueFields(s)) ? 2 : 3;
+  const hasUnrecognizedGrades = _impUnrecognizedGrades(s).length > 0;
+  const backStep = (_impAllRecognized(_impValueFields(s)) && !hasUnrecognizedGrades) ? 2 : 3;
 
   let summary, tableHTML;
 
   if (s.mode === 'schoolYear') {
     const byGrade = _impBuildByGrade(s);
     const totalStudents = Object.values(byGrade).reduce((n, arr) => n + arr.length, 0);
+
     const gradeRows = Object.entries(byGrade).map(([g, arr]) =>
       `<tr><td style="padding:7px 12px;font-size:13px;border-top:1px solid var(--line-soft);">${escAttr(g)}</td>
            <td style="padding:7px 12px;font-size:13px;border-top:1px solid var(--line-soft);color:var(--ink-3);">${arr.length} student${arr.length!==1?'s':''}</td></tr>`
@@ -4981,8 +5090,9 @@ function _impBuildByGrade(state) {
   for (const row of state.rawRows) {
     const name = (row[nameCol] || '').trim();
     if (!name) continue;
-    const gradeName = normalizeGradeName(row[gradeCol] || '');
-    if (!gradeName) continue; // skip unrecognized grades
+    const rawGrade = (row[gradeCol] || '').trim();
+    const gradeName = normalizeGradeName(rawGrade) || state.gradeMapping[rawGrade];
+    if (!gradeName) continue;
 
     if (!byGrade[gradeName]) byGrade[gradeName] = [];
     const student = { name };
@@ -5024,13 +5134,19 @@ async function _impConfirm() {
     });
   }
 
-  if (res.ok) {
-    closeImportModal();
-    await loadGrades();
-    showScreen('students');
-  } else {
+  try {
+    if (res.ok) {
+      closeImportModal();
+      await loadGrades();
+      showScreen('students');
+    } else {
+      const body = await res.json().catch(() => ({}));
+      if (btn) { btn.disabled = false; btn.textContent = 'Import students'; }
+      _impShowErr(body.error || 'Failed to save. Please try again.');
+    }
+  } catch (err) {
     if (btn) { btn.disabled = false; btn.textContent = 'Import students'; }
-    _impShowErr('Failed to save. Please try again.');
+    _impShowErr('Network error: ' + err.message);
   }
 }
 
