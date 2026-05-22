@@ -111,7 +111,8 @@ async function switchSchoolYear(year) {
   await fetch(`/api/school-years/${year}`, { method: "POST" });
   await loadConfig();
   await loadGrades();
-  showScreen(currentScreen); // Refresh current screen
+  if (grades.length === 0) showScreen('welcome');
+  else showScreen(currentScreen);
 }
 
 // Mark a year as "current" (visual only)
@@ -882,6 +883,7 @@ async function showScreen(screen) {
     content = renderConfigScreen();
   } else if (screen === "school-config") {
     content = renderSchoolConfigScreen();
+    setTimeout(populateServerUrl, 0);
   } else if (screen === "students" || screen === "results") {
     content = await renderStudentsScreen();
   } else if (screen === "grade-settings") {
@@ -1443,6 +1445,32 @@ async function submitChangePassword(userId, requireCurrent) {
 }
 window.submitChangePassword = submitChangePassword;
 
+async function populateServerUrl() {
+  let url = window.location.origin;
+  try {
+    const r = await fetch('/api/server-info');
+    if (r.ok) { const d = await r.json(); url = d.url; }
+  } catch (_) {}
+  const disp = document.getElementById('server-url-display');
+  const copy = document.getElementById('server-url-copy');
+  const mailto = document.getElementById('server-url-mailto');
+  if (!disp) return;
+  disp.textContent = url;
+  copy._url = url;
+  const mailtoBody = encodeURIComponent(`Hi,\n\nYou can access the class assignment tool at:\n${url}\n\nLog in with the credentials your admin set up for you.`);
+  mailto.href = `mailto:?subject=${encodeURIComponent('Your class assignment tool access link')}&body=${mailtoBody}`;
+}
+
+function copyServerUrl() {
+  const btn = document.getElementById('server-url-copy');
+  const url = btn?._url || document.getElementById('server-url-display')?.textContent;
+  if (!url) return;
+  navigator.clipboard.writeText(url).then(() => {
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+  });
+}
+
 function renderSchoolConfigScreen() {
   const grades = [
     "Kindergarten",
@@ -1464,6 +1492,23 @@ function renderSchoolConfigScreen() {
         </div>
       </div>
       <div style="max-width:560px">
+        <div class="panel" style="margin-bottom:16px" id="server-url-panel">
+          <div class="panel-h">
+            <h3>Teacher access</h3>
+            <span class="sub">share with your staff</span>
+          </div>
+          <div class="panel-b">
+            <p style="font-size:12px;color:var(--ink-3);line-height:1.6;margin-bottom:12px">
+              Teachers can access Classify from any device on your school network using this address.
+            </p>
+            <div style="background:var(--bg-2);border:1px solid var(--line);border-radius:var(--rad);padding:9px 12px;font-family:'JetBrains Mono',monospace;font-size:13px;display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:10px;">
+              <span id="server-url-display" style="word-break:break-all;color:var(--ink-2);">Loading…</span>
+              <button id="server-url-copy" onclick="copyServerUrl()" style="flex-shrink:0;padding:4px 10px;background:var(--terra);color:#fff;border:none;border-radius:var(--rad);font-size:12px;cursor:pointer;font-family:inherit;">Copy</button>
+            </div>
+            <a id="server-url-mailto" href="#" style="font-size:13px;color:var(--ink-3);text-decoration:none;">✉ Email teachers this link</a>
+          </div>
+        </div>
+
         <div class="panel" style="margin-bottom:16px">
           <div class="panel-h">
             <h3>School name</h3>
@@ -1898,42 +1943,29 @@ async function updateMaxGrade(value) {
 }
 
 async function resetWeightsToDefaults() {
-  // Default weights based on slider values (1-5 scale = 20-100 weight)
+  const ok = await showConfirm('Reset all rules & weights to factory defaults? This will re-enable all properties and remove any custom attributes.', { confirmLabel: 'Reset' });
+  if (!ok) return;
+
   const defaults = {
-    gender: 40, // 2 = Medium
-    behavior: 100, // 5 = Critical
-    independence: 60, // 3 = Medium
-    iep: 100, // 5 = Critical
-    504: 100, // 5 = Critical
-    esl: 80, // 4 = High
-    gate: 60, // 3 = Medium
-    math: 60, // 3 = Medium
-    reading: 60, // 3 = Medium
-    friends: 20, // 1 = Mild
+    gender: 40, behavior: 100, independence: 60, iep: 100,
+    '504': 100, esl: 80, gate: 60, math: 60, reading: 60, friends: 20,
   };
 
-  // Update config properties
-  config.properties.forEach((prop) => {
-    if (defaults[prop.name] !== undefined) {
-      prop.weight = defaults[prop.name];
-    }
-  });
+  // Remove custom properties, reset weights and re-enable all standard ones
+  config.properties = config.properties
+    .filter(p => !p.custom)
+    .map(p => ({ ...p, weight: defaults[p.name] ?? p.weight, enabled: true }));
 
-  // Update friend_weight
-  if (config.friend_weight !== undefined) {
-    config.friend_weight = defaults["friends"];
-  }
+  config.friend_weight = defaults.friends;
 
-  // Save to server
   await fetch("/api/config", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(config),
   });
 
-  // Re-render config screen
   showScreen("config");
-  showNotice("Reset to default weights");
+  showNotice("Rules & weights reset to factory defaults");
 }
 
 async function saveSchoolName() {
@@ -4647,6 +4679,8 @@ const _IMP_COL_PATTERNS = {
   reading:      ['reading','read','ela','reading level','reading_level','reading perf','reading score','literacy','reading achievement','reading proficiency','ela level','reading performance level','reading benchmark','literacy level','language arts','reading skill','reading band'],
   friends:      ['friends','friend','friend list','requests with','friend_requests','request','friend request','friend requests','place with','together with','pair with'],
   incompatible: ['incompatible','separate','cannot be with','keep apart','conflict','do not place','no with','keep separate','separate from','not with','avoid','apart from','not together','cannot with'],
+  firstName:    ['first name','first_name','fname','given name','preferred name','preferred first name','forename'],
+  lastName:     ['last name','last_name','lname','family name','surname'],
 };
 
 function _impSuggest(field, raw) {
@@ -4729,10 +4763,11 @@ function _impAutoDetect(csvColumns) {
       const idx = lc.indexOf(pat);
       if (idx !== -1) { mappings[field] = csvColumns[idx]; break; }
     }
-    if (!mappings[field] && field === 'name') {
-      const idx = lc.findIndex(c => c.includes('name') && !c.includes('grade') && !c.includes('school'));
-      if (idx !== -1) mappings[field] = csvColumns[idx];
-    }
+  }
+  // Fuzzy fallback for name — only when no dedicated first/last name columns were found
+  if (!mappings['name'] && !mappings['firstName'] && !mappings['lastName']) {
+    const idx = lc.findIndex(c => c.includes('name') && !c.includes('grade') && !c.includes('school') && !c.includes('first') && !c.includes('last'));
+    if (idx !== -1) mappings['name'] = csvColumns[idx];
   }
   return mappings;
 }
@@ -4741,6 +4776,14 @@ function _impUniqueVals(rows, col) {
   const s = new Set();
   for (const r of rows) { const v = (r[col] ?? '').trim(); if (v !== '') s.add(v); }
   return [...s];
+}
+
+function _isLikelyFreeText(rows, col) {
+  const vals = rows.map(r => (r[col] || '').trim()).filter(Boolean);
+  if (vals.length < 2) return false;
+  const unique = new Set(vals).size;
+  const avgLen = vals.reduce((s, v) => s + v.length, 0) / vals.length;
+  return unique / vals.length > 0.6 || avgLen > 30;
 }
 
 function _impAllFields() {
@@ -4752,6 +4795,27 @@ function _impAllFields() {
       options: p.type !== 'boolean' ? (p.values || []).map(v => ({ v, label: v })) : undefined,
     }));
   return [..._IMP_FIELDS, ...customs];
+}
+
+const _IMP_KNOWN_KEYS = new Set(['name','firstName','lastName','grade','gender','behavior','independence','iep','504','esl','gate','math','reading','friends','incompatible']);
+
+function _impExtraCols(state) {
+  const mapped = new Set(Object.values(state.colMappings).filter(Boolean));
+  return state.columns
+    .filter(col => !mapped.has(col))
+    .map(col => {
+      const pref = state.extraPrefs[col] ?? {};
+      const freeText = _isLikelyFreeText(state.rawRows, col);
+      return { csvCol: col, label: pref.label ?? col, include: pref.include ?? !freeText, freeText };
+    });
+}
+
+function _impSetExtraPref(col, key, val) {
+  if (!_impState.extraPrefs[col]) _impState.extraPrefs[col] = {};
+  _impState.extraPrefs[col][key] = val;
+  // No full re-render needed for label edits — just update in place
+  if (key !== 'include') return;
+  _impRender();
 }
 
 function _impValueFields(state) {
@@ -4771,11 +4835,18 @@ function _impAllRecognized(valueFields) {
 }
 
 function _impBuildStudents(state) {
-  const gradeCol = state.colMappings['grade'];
-  const nameCol  = state.colMappings['name'];
+  const gradeCol  = state.colMappings['grade'];
+  const nameCol   = state.colMappings['name'];
+  const firstCol  = state.colMappings['firstName'];
+  const lastCol   = state.colMappings['lastName'];
   const students = [];
   for (const row of state.rawRows) {
-    const name = (row[nameCol] || '').trim();
+    let name = (row[nameCol] || '').trim();
+    if (!name) {
+      const first = firstCol ? (row[firstCol] || '').trim() : '';
+      const last  = lastCol  ? (row[lastCol]  || '').trim() : '';
+      name = [first, last].filter(Boolean).join(' ');
+    }
     if (!name) continue;
     if (gradeCol) {
       const rowGrade = normalizeGradeName(row[gradeCol] || '');
@@ -4797,6 +4868,9 @@ function _impBuildStudents(state) {
       const mapped = state.valMappings[f.key]?.[rawVal] ?? _impSuggest(f, rawVal);
       student[f.key] = f.type === 'boolean' ? mapped === 'true' : (mapped ?? f.options?.[0]?.v ?? '');
     }
+    for (const { csvCol, label, include } of _impExtraCols(state)) {
+      if (include) student[label] = (row[csvCol] || '').trim();
+    }
     students.push(student);
   }
   return students;
@@ -4805,7 +4879,7 @@ function _impBuildStudents(state) {
 let _impState = null;
 
 function showImportModal(mode) {
-  _impState = { step:1, mode: mode || 'grade', rawRows:[], columns:[], colMappings:{}, valMappings:{}, gradeMapping:{} };
+  _impState = { step:1, mode: mode || 'grade', rawRows:[], columns:[], colMappings:{}, valMappings:{}, gradeMapping:{}, extraPrefs:{} };
   _impRender();
   document.getElementById('importModal').classList.add('open');
 }
@@ -4845,6 +4919,32 @@ function _impStep1HTML() {
 function _impStep2HTML() {
   const s = _impState;
   const rows = _impAllFields().map(f => {
+    // Special handling for name field — may come as first + last name columns
+    if (f.key === 'name') {
+      const firstCol = s.colMappings['firstName'] || '';
+      const lastCol  = s.colMappings['lastName']  || '';
+      const nameCol  = s.colMappings['name']  || '';
+      if ((firstCol || lastCol) && !nameCol) {
+        const r0 = s.rawRows[0] || {};
+        const sFirst = firstCol ? (r0[firstCol] || '').trim() : '';
+        const sLast  = lastCol  ? (r0[lastCol]  || '').trim() : '';
+        const combined = [sFirst, sLast].filter(Boolean).join(' ');
+        const colOpts = col => `<option value="">—</option>${s.columns.map(c=>`<option value="${escAttr(c)}" ${c===col?'selected':''}>${escAttr(c)}</option>`).join('')}`;
+        const selSt = 'flex:1;padding:5px 7px;border:1px solid var(--line);border-radius:var(--rad);font-size:12px;font-family:inherit;background:var(--bg);color:var(--ink);min-width:0;';
+        return `<tr style="border-top:1px solid var(--line-soft);">
+          <td style="padding:8px 12px;font-size:13px;font-weight:500;white-space:nowrap;color:var(--ink);">Student name <span style="color:var(--terra)">*</span></td>
+          <td style="padding:8px 12px;">
+            <div style="display:flex;align-items:center;gap:5px;">
+              <select onchange="_impState.colMappings.firstName=this.value||null;_impRender()" style="${selSt}">${colOpts(firstCol)}</select>
+              <span style="color:var(--ink-4);font-size:11px;flex-shrink:0;">+ last</span>
+              <select onchange="_impState.colMappings.lastName=this.value||null;_impRender()" style="${selSt}">${colOpts(lastCol)}</select>
+            </div>
+            <div style="margin-top:4px;"><a href="#" style="font-size:11px;color:var(--ink-4);" onclick="event.preventDefault();_impState.colMappings.firstName=null;_impState.colMappings.lastName=null;_impRender()">Use a single combined name column instead</a></div>
+          </td>
+          <td style="padding:8px 12px;font-size:12px;color:var(--ink-4);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escAttr(combined)}">${combined ? escAttr(combined) : ''}</td>
+        </tr>`;
+      }
+    }
     const sel = s.colMappings[f.key] || '';
     const sample = sel ? _impUniqueVals(s.rawRows, sel).slice(0,4).join(', ') : '';
     return `<tr style="border-top:1px solid var(--line-soft);">
@@ -4894,6 +4994,50 @@ function _impStep2HTML() {
       </select>
       <span style="font-size:12px;color:var(--ink-4);white-space:nowrap;">${gradeSample ? escAttr(gradeSample) : s.mode==='schoolYear' ? 'splits students by grade' : 'filters to '+escAttr(currentGrade?.name||'this grade')}</span>
     </div>
+    ${(() => {
+      const extras = _impExtraCols(s);
+      if (!extras.length) return '';
+      const rows = extras.map(({ csvCol, label, include, freeText }) => {
+        const sample = _impUniqueVals(s.rawRows, csvCol).slice(0,3).join(', ');
+        const badge = freeText
+          ? `<span style="font-size:10px;padding:1px 6px;background:var(--bg-3);border-radius:10px;color:var(--ink-3);margin-left:6px;white-space:nowrap;">free text</span>`
+          : `<span style="font-size:10px;padding:1px 6px;background:var(--bg-3);border-radius:10px;color:var(--ink-3);margin-left:6px;white-space:nowrap;">categorical</span>`;
+        const note = freeText ? `<div style="font-size:11px;color:var(--ink-4);margin-top:2px;">Stored as a note — won't affect class balancing</div>` : '';
+        return `<tr style="border-top:1px solid var(--line-soft);">
+          <td style="padding:8px 12px;">
+            <input type="checkbox" ${include ? 'checked' : ''} onchange="_impSetExtraPref(${JSON.stringify(csvCol)},'include',this.checked)" />
+          </td>
+          <td style="padding:8px 12px;font-size:13px;color:var(--ink-3);white-space:nowrap;">${escAttr(csvCol)}${badge}</td>
+          <td style="padding:8px 12px;">
+            <input type="text" value="${escAttr(label)}"
+              onchange="_impState.extraPrefs[${JSON.stringify(csvCol)}]=_impState.extraPrefs[${JSON.stringify(csvCol)}]||{};_impState.extraPrefs[${JSON.stringify(csvCol)}].label=this.value"
+              style="width:100%;padding:5px 8px;border:1px solid var(--line);border-radius:var(--rad);font-size:13px;font-family:inherit;background:var(--bg);color:var(--ink);box-sizing:border-box;" />
+          </td>
+          <td style="padding:8px 12px;font-size:12px;color:var(--ink-4);max-width:160px;overflow:hidden;text-overflow:ellipsis;">
+            <div style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="${escAttr(sample)}">${sample ? escAttr(sample) : ''}</div>
+            ${note}
+          </td>
+        </tr>`;
+      }).join('');
+      return `
+        <div style="margin-top:14px;">
+          <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:4px;">Unrecognized columns</div>
+          <div style="font-size:12px;color:var(--ink-4);margin-bottom:8px;">Categorical columns (few distinct values) are shown as student attributes. Free text columns are stored as notes only.</div>
+          <div style="border:1px solid var(--line);border-radius:var(--rad);overflow:hidden;">
+            <table style="width:100%;border-collapse:collapse;">
+              <thead style="background:var(--bg-2);">
+                <tr>
+                  <th style="padding:7px 12px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);width:32px;">Keep</th>
+                  <th style="padding:7px 12px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);">CSV column</th>
+                  <th style="padding:7px 12px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);">Label</th>
+                  <th style="padding:7px 12px;text-align:left;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);">Sample values</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        </div>`;
+    })()}
     <div id="imp-err" style="margin-top:10px;font-size:13px;color:var(--rose);display:none;"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
       <button class="btn ghost" onclick="_impState.step=1;_impRender()">Back</button>
@@ -4907,7 +5051,8 @@ function _impSetCol(fieldKey, colName) {
 }
 
 function _impStep2Next() {
-  if (!_impState.colMappings['name']) { _impShowErr('You must map the student name column.'); return; }
+  const hasName = _impState.colMappings['name'] || _impState.colMappings['firstName'] || _impState.colMappings['lastName'];
+  if (!hasName) { _impShowErr('You must map a student name column (or first + last name columns).'); return; }
   if (_impState.mode === 'schoolYear' && !_impState.colMappings['grade']) { _impShowErr('You must map the grade column to import across all grades.'); return; }
   const vf = _impValueFields(_impState);
   // Pre-apply suggestions without clobbering any existing manual mappings
@@ -5083,12 +5228,19 @@ function _impStep4HTML() {
 
 function _impBuildByGrade(state) {
   // Returns { gradeName: [students] } for school year mode import.
-  const gradeCol = state.colMappings['grade'];
-  const nameCol  = state.colMappings['name'];
+  const gradeCol  = state.colMappings['grade'];
+  const nameCol   = state.colMappings['name'];
+  const firstCol  = state.colMappings['firstName'];
+  const lastCol   = state.colMappings['lastName'];
   const byGrade  = {};
 
   for (const row of state.rawRows) {
-    const name = (row[nameCol] || '').trim();
+    let name = (row[nameCol] || '').trim();
+    if (!name) {
+      const first = firstCol ? (row[firstCol] || '').trim() : '';
+      const last  = lastCol  ? (row[lastCol]  || '').trim() : '';
+      name = [first, last].filter(Boolean).join(' ');
+    }
     if (!name) continue;
     const rawGrade = (row[gradeCol] || '').trim();
     const gradeName = normalizeGradeName(rawGrade) || state.gradeMapping[rawGrade];
@@ -5104,6 +5256,9 @@ function _impBuildByGrade(state) {
       const rawVal = (row[col] || '').trim();
       const mapped = state.valMappings[f.key]?.[rawVal] ?? _impSuggest(f, rawVal);
       student[f.key] = f.type === 'boolean' ? mapped === 'true' : (mapped ?? f.options?.[0]?.v ?? '');
+    }
+    for (const { csvCol, label, include } of _impExtraCols(state)) {
+      if (include) student[label] = (row[csvCol] || '').trim();
     }
     byGrade[gradeName].push(student);
   }
@@ -5184,6 +5339,7 @@ function _impShowErr(msg) {
 window._impHandleFile  = _impHandleFile;
 window._impSetCol      = _impSetCol;
 window._impSetVal      = _impSetVal;
+window._impSetExtraPref = _impSetExtraPref;
 window._impStep2Next   = _impStep2Next;
 window._impStep3Next   = _impStep3Next;
 window._impConfirm     = _impConfirm;
@@ -5313,6 +5469,15 @@ function showStudentDetail(name) {
             }
           })
           .join("")}
+        ${(() => {
+          const knownKeys = new Set([..._IMP_KNOWN_KEYS, ...(config.properties||[]).map(p=>p.name)]);
+          const extras = Object.entries(student).filter(([k]) => !knownKeys.has(k) && k !== 'name');
+          if (!extras.length) return '';
+          return `<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line-soft);">
+            <div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-4);margin-bottom:6px;">Additional info</div>
+            ${extras.map(([k,v]) => v ? `<div class="prop-row"><span class="k">${k}</span><span style="font-size:13px;color:var(--ink-2);">${v}</span></div>` : '').join('')}
+          </div>`;
+        })()}
       </div>
 
       <div class="detail-section">
