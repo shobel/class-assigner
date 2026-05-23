@@ -208,14 +208,14 @@ function normalizeGradeName(grade) {
   const g = grade.toLowerCase().replace(/[^a-z0-9]/g, '');
 
   if (g.includes('k') || g === '0') return 'Kindergarten';
-  if (g === '1' || g === '1st' || g.includes('first')) return '1st Grade';
-  if (g === '2' || g === '2nd' || g.includes('second')) return '2nd Grade';
-  if (g === '3' || g === '3rd' || g.includes('third')) return '3rd Grade';
-  if (g === '4' || g === '4th' || g.includes('fourth')) return '4th Grade';
-  if (g === '5' || g === '5th' || g.includes('fifth')) return '5th Grade';
-  if (g === '6' || g === '6th' || g.includes('sixth')) return '6th Grade';
-  if (g === '7' || g === '7th' || g.includes('seventh')) return '7th Grade';
-  if (g === '8' || g === '8th' || g.includes('eighth')) return '8th Grade';
+  if (g === '1' || g.startsWith('1st') || g.includes('first')) return '1st Grade';
+  if (g === '2' || g.startsWith('2nd') || g.includes('second')) return '2nd Grade';
+  if (g === '3' || g.startsWith('3rd') || g.includes('third')) return '3rd Grade';
+  if (g === '4' || g.startsWith('4th') || g.includes('fourth')) return '4th Grade';
+  if (g === '5' || g.startsWith('5th') || g.includes('fifth')) return '5th Grade';
+  if (g === '6' || g.startsWith('6th') || g.includes('sixth')) return '6th Grade';
+  if (g === '7' || g.startsWith('7th') || g.includes('seventh')) return '7th Grade';
+  if (g === '8' || g.startsWith('8th') || g.includes('eighth')) return '8th Grade';
 
   return null;
 }
