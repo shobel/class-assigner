@@ -5307,7 +5307,11 @@ async function _impConfirm() {
     if (res.ok) {
       closeImportModal();
       await loadGrades();
-      showScreen('students');
+      if (s.mode === 'schoolYear' && grades.length > 0) {
+        await selectGrade(grades[0].id);
+      } else {
+        showScreen('students');
+      }
     } else {
       const body = await res.json().catch(() => ({}));
       if (btn) { btn.disabled = false; btn.textContent = 'Import students'; }
