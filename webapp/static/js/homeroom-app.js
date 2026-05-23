@@ -4661,8 +4661,9 @@ const _IMP_FIELDS = [
   { key:'gate',         label:'GATE / Gifted',  type:'boolean' },
   { key:'math',         label:'Math level',     type:'choice', options:[{v:'h',label:'High'},{v:'m',label:'Medium'},{v:'l',label:'Low'}] },
   { key:'reading',      label:'Reading level',  type:'choice', options:[{v:'h',label:'High'},{v:'m',label:'Medium'},{v:'l',label:'Low'}] },
-  { key:'friends',      label:'Friends',        type:'text' },
-  { key:'incompatible', label:'Separate from',  type:'text' },
+  { key:'friends',       label:'Friends',              type:'text' },
+  { key:'incompatible',  label:'Separate from',        type:'text' },
+  { key:'assignedClass', label:'Current class/teacher', type:'text' },
 ];
 
 const _IMP_COL_PATTERNS = {
@@ -4677,8 +4678,9 @@ const _IMP_COL_PATTERNS = {
   gate:         ['gate','gifted','tag','talented','gate/gifted','gifted and talented','academically gifted','advanced learner','enrichment'],
   math:         ['math','mathematics','math level','math_level','math perf','math performance','math score','math achievement','math proficiency','mathematics level','math performance level','math benchmark','numeracy','math skill'],
   reading:      ['reading','read','ela','reading level','reading_level','reading perf','reading score','literacy','reading achievement','reading proficiency','ela level','reading performance level','reading benchmark','literacy level','language arts','reading skill','reading band'],
-  friends:      ['friends','friend','friend list','requests with','friend_requests','request','friend request','friend requests','place with','together with','pair with'],
-  incompatible: ['incompatible','separate','cannot be with','keep apart','conflict','do not place','no with','keep separate','separate from','not with','avoid','apart from','not together','cannot with'],
+  friends:        ['friends','friend','friend list','requests with','friend_requests','request','friend request','friend requests','place with','together with','pair with'],
+  incompatible:   ['incompatible','separate','cannot be with','keep apart','conflict','do not place','no with','keep separate','separate from','not with','avoid','apart from','not together','cannot with'],
+  assignedClass:  ['teacher','teacher name','homeroom teacher','current teacher','assigned teacher','classroom teacher','class assignment','assigned class','current class','next teacher','next class'],
   firstName:    ['first name','first_name','fname','given name','preferred name','preferred first name','forename'],
   lastName:     ['last name','last_name','lname','family name','surname'],
 };
@@ -4797,7 +4799,7 @@ function _impAllFields() {
   return [..._IMP_FIELDS, ...customs];
 }
 
-const _IMP_KNOWN_KEYS = new Set(['name','firstName','lastName','grade','gender','behavior','independence','iep','504','esl','gate','math','reading','friends','incompatible']);
+const _IMP_KNOWN_KEYS = new Set(['name','firstName','lastName','grade','gender','behavior','independence','iep','504','esl','gate','math','reading','friends','incompatible','assignedClass']);
 
 function _impExtraCols(state) {
   const mapped = new Set(Object.values(state.colMappings).filter(Boolean));
@@ -4921,25 +4923,24 @@ function _impStep2HTML() {
   const rows = _impAllFields().map(f => {
     // Special handling for name field — may come as first + last name columns
     if (f.key === 'name') {
-      const firstCol = s.colMappings['firstName'] || '';
-      const lastCol  = s.colMappings['lastName']  || '';
-      const nameCol  = s.colMappings['name']  || '';
-      if ((firstCol || lastCol) && !nameCol) {
+      if (s.nameMode === 'combined') {
+        const firstCol = s.colMappings['firstName'] || '';
+        const lastCol  = s.colMappings['lastName']  || '';
         const r0 = s.rawRows[0] || {};
         const sFirst = firstCol ? (r0[firstCol] || '').trim() : '';
         const sLast  = lastCol  ? (r0[lastCol]  || '').trim() : '';
         const combined = [sFirst, sLast].filter(Boolean).join(' ');
-        const colOpts = col => `<option value="">—</option>${s.columns.map(c=>`<option value="${escAttr(c)}" ${c===col?'selected':''}>${escAttr(c)}</option>`).join('')}`;
+        const colOpts = col => `<option value="">— skip —</option>${s.columns.map(c=>`<option value="${escAttr(c)}" ${c===col?'selected':''}>${escAttr(c)}</option>`).join('')}`;
         const selSt = 'flex:1;padding:5px 7px;border:1px solid var(--line);border-radius:var(--rad);font-size:12px;font-family:inherit;background:var(--bg);color:var(--ink);min-width:0;';
         return `<tr style="border-top:1px solid var(--line-soft);">
           <td style="padding:8px 12px;font-size:13px;font-weight:500;white-space:nowrap;color:var(--ink);">Student name <span style="color:var(--terra)">*</span></td>
           <td style="padding:8px 12px;">
             <div style="display:flex;align-items:center;gap:5px;">
               <select onchange="_impState.colMappings.firstName=this.value||null;_impRender()" style="${selSt}">${colOpts(firstCol)}</select>
-              <span style="color:var(--ink-4);font-size:11px;flex-shrink:0;">+ last</span>
+              <span style="color:var(--ink-4);font-size:11px;flex-shrink:0;">+</span>
               <select onchange="_impState.colMappings.lastName=this.value||null;_impRender()" style="${selSt}">${colOpts(lastCol)}</select>
             </div>
-            <div style="margin-top:4px;"><a href="#" style="font-size:11px;color:var(--ink-4);" onclick="event.preventDefault();_impState.colMappings.firstName=null;_impState.colMappings.lastName=null;_impRender()">Use a single combined name column instead</a></div>
+            <div style="margin-top:4px;"><a href="#" style="font-size:11px;color:var(--ink-4);" onclick="event.preventDefault();_impState.nameMode='single';_impState.colMappings.firstName=null;_impState.colMappings.lastName=null;_impRender()">Use a single name column instead</a></div>
           </td>
           <td style="padding:8px 12px;font-size:12px;color:var(--ink-4);max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escAttr(combined)}">${combined ? escAttr(combined) : ''}</td>
         </tr>`;
@@ -4947,6 +4948,9 @@ function _impStep2HTML() {
     }
     const sel = s.colMappings[f.key] || '';
     const sample = sel ? _impUniqueVals(s.rawRows, sel).slice(0,4).join(', ') : '';
+    const splitLink = f.key === 'name'
+      ? `<div style="margin-top:4px;"><a href="#" style="font-size:11px;color:var(--ink-4);" onclick="event.preventDefault();_impState.nameMode='combined';_impState.colMappings.name=null;_impRender()">My CSV has separate first and last name columns</a></div>`
+      : '';
     return `<tr style="border-top:1px solid var(--line-soft);">
       <td style="padding:8px 12px;font-size:13px;font-weight:500;white-space:nowrap;color:var(--ink);">
         ${escAttr(f.label)}${f.required?` <span style="color:var(--terra)">*</span>`:''}
@@ -4957,6 +4961,7 @@ function _impStep2HTML() {
           <option value="">— skip —</option>
           ${s.columns.map(c=>`<option value="${escAttr(c)}" ${c===sel?'selected':''}>${escAttr(c)}</option>`).join('')}
         </select>
+        ${splitLink}
       </td>
       <td style="padding:8px 12px;font-size:12px;color:var(--ink-4);font-style:${sample?'normal':'italic'};max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${escAttr(sample)}">
         ${sample ? escAttr(sample) : 'not mapped'}
@@ -5213,11 +5218,20 @@ function _impStep4HTML() {
     ? Object.values(_impBuildByGrade(s)).reduce((n, arr) => n + arr.length, 0)
     : _impBuildStudents(s).length;
 
+  const hasAssignedClass = !!s.colMappings['assignedClass'];
+  const assignedClassNote = hasAssignedClass
+    ? `<div style="margin-bottom:10px;padding:8px 12px;background:var(--bg-2);border-radius:var(--rad);font-size:12px;color:var(--ink-3);">
+        Students will be placed into their existing classes based on the <strong>${escAttr(s.colMappings['assignedClass'])}</strong> column.
+        You can re-run the optimizer at any time to explore alternatives.
+       </div>`
+    : '';
+
   return `
     <div style="font-size:13px;color:var(--ink-3);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">
       <span>${summary}</span>
       <span style="font-size:12px;color:var(--rose);">Replaces existing students &amp; assignments</span>
     </div>
+    ${assignedClassNote}
     <div style="overflow:auto;max-height:320px;border:1px solid var(--line);border-radius:var(--rad);">${tableHTML}</div>
     <div id="imp-err" style="margin-top:10px;font-size:13px;color:var(--rose);display:none;"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
@@ -5323,6 +5337,7 @@ async function _impHandleFile(file) {
     _impState.columns = columns;
     _impState.rawRows = rawRows;
     _impState.colMappings = _impAutoDetect(columns);
+    _impState.nameMode = (_impState.colMappings['firstName'] || _impState.colMappings['lastName']) ? 'combined' : 'single';
     _impState.step = 2;
     _impRender();
   } catch (e) {

@@ -1334,19 +1334,53 @@ def api_school_year_import():
 
     students_data = load_school_year_data(active_year)
     for grade_name, students in grades_data.items():
-        if grade_name in students_data:
-            students_data[grade_name]['students'] = students
-            students_data[grade_name]['assignment_stale'] = True
+        # Check if any student has an assignedClass — if so, build assignments from it
+        class_order = []  # preserves insertion order of first appearance
+        for s in students:
+            cls = s.get('assignedClass', '').strip()
+            if cls and cls not in class_order:
+                class_order.append(cls)
+        has_assignments = len(class_order) > 0
+
+        # Strip assignedClass from student records before storing
+        clean_students = [{k: v for k, v in s.items() if k != 'assignedClass'} for s in students]
+
+        if has_assignments:
+            class_index = {name: i for i, name in enumerate(class_order)}
+            assignments = [
+                {'name': s['name'], 'assigned_class': class_index[s.get('assignedClass', '').strip()]}
+                for s in students if s.get('name') and s.get('assignedClass', '').strip() in class_index
+            ]
+            class_names = {str(i): name for i, name in enumerate(class_order)}
+            num_classes = len(class_order)
+            avg = len(clean_students) / num_classes if num_classes else 20
         else:
+            assignments = []
+            class_names = {}
             num_classes = 3 if grade_name == 'Kindergarten' else 5
-            avg = len(students) / num_classes if students else 20
-            students_data[grade_name] = {
-                'students': students,
+            avg = len(clean_students) / num_classes if clean_students else 20
+
+        if grade_name in students_data:
+            students_data[grade_name]['students'] = clean_students
+            students_data[grade_name]['assignment_stale'] = not has_assignments
+            if has_assignments:
+                students_data[grade_name]['assignments'] = assignments
+                students_data[grade_name]['solver_baseline'] = assignments.copy()
+                students_data[grade_name]['class_names'] = class_names
+                students_data[grade_name]['num_classes'] = num_classes
+        else:
+            grade_entry = {
+                'students': clean_students,
                 'num_classes': num_classes,
                 'min_students': max(1, int(avg * 0.8)),
                 'max_students': int(avg * 1.2) + 2,
-                'assignments': []
+                'assignments': assignments,
+                'assignment_stale': not has_assignments,
             }
+            if has_assignments:
+                grade_entry['solver_baseline'] = assignments.copy()
+                grade_entry['class_names'] = class_names
+            students_data[grade_name] = grade_entry
     save_school_year_data(active_year, students_data)
 
     total = sum(len(s) for s in grades_data.values())
