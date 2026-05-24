@@ -1346,12 +1346,12 @@ def api_school_year_import():
         clean_students = [{k: v for k, v in s.items() if k != 'assignedClass'} for s in students]
 
         if has_assignments:
-            class_index = {name: i for i, name in enumerate(class_order)}
+            class_index = {name: i + 1 for i, name in enumerate(class_order)}
             assignments = [
                 {'name': s['name'], 'assigned_class': class_index[s.get('assignedClass', '').strip()]}
                 for s in students if s.get('name') and s.get('assignedClass', '').strip() in class_index
             ]
-            class_names = {str(i): name for i, name in enumerate(class_order)}
+            class_names = {str(i + 1): name for i, name in enumerate(class_order)}
             num_classes = len(class_order)
             avg = len(clean_students) / num_classes if num_classes else 20
         else:
