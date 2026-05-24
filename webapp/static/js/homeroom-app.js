@@ -3185,11 +3185,12 @@ function generateMinimalStats(
   // Calculate friendship stats for minimal view
   let relationshipHTML = "";
   // allStudents already declared above
-  if (allStudents.some((s) => "has_friend_in_class" in s)) {
-    const studentsWithFriendsDefined = allStudents.filter((s) => {
-      const friends = s.friends;
-      return friends && friends.length > 0 && friends !== "[]";
-    }).length;
+  const studentsWithFriendsDefined_minimal = allStudents.filter((s) => {
+    const friends = s.friends;
+    return friends && friends.length > 0 && friends !== "[]";
+  }).length;
+  if (allStudents.some((s) => "has_friend_in_class" in s) && studentsWithFriendsDefined_minimal > 0) {
+    const studentsWithFriendsDefined = studentsWithFriendsDefined_minimal;
 
     const totalWithFriend = allStudents.filter(
       (s) => s.has_friend_in_class,
@@ -3456,11 +3457,12 @@ function generateCompactBalanceStrip(
   }
 
   // Add friendship stats
-  if (allStudents.some((s) => "has_friend_in_class" in s)) {
-    const studentsWithFriendsDefined = allStudents.filter((s) => {
-      const friends = s.friends;
-      return friends && friends.length > 0 && friends !== "[]";
-    }).length;
+  const studentsWithFriendsDefined_compact = allStudents.filter((s) => {
+    const friends = s.friends;
+    return friends && friends.length > 0 && friends !== "[]";
+  }).length;
+  if (allStudents.some((s) => "has_friend_in_class" in s) && studentsWithFriendsDefined_compact > 0) {
+    const studentsWithFriendsDefined = studentsWithFriendsDefined_compact;
 
     const totalWithFriend = allStudents.filter(
       (s) => s.has_friend_in_class,
@@ -3828,7 +3830,12 @@ function calculateRelationshipStats(classesList) {
 
   // Friendship satisfaction stats
   let friendshipHTML = "";
-  if (allStudents.some((s) => "has_friend_in_class" in s)) {
+  const studentsWithFriendsDefined = allStudents.filter((s) => {
+    const friends = s.friends;
+    return friends && friends.length > 0 && friends !== "[]";
+  }).length;
+
+  if (allStudents.some((s) => "has_friend_in_class" in s) && studentsWithFriendsDefined > 0) {
     const friendStats = classesList.map((cls) => {
       const students = cls.students;
       const withFriend = students.filter((s) => s.has_friend_in_class).length;
@@ -3842,13 +3849,6 @@ function calculateRelationshipStats(classesList) {
       0,
     );
     const totalStudents = friendStats.reduce((sum, s) => sum + s.total, 0);
-
-    // Calculate how many students COULD have gotten a friend (had friends defined)
-    const studentsWithFriendsDefined = allStudents.filter((s) => {
-      const friends = s.friends;
-      // Check if friends is defined and not empty string or "[]"
-      return friends && friends.length > 0 && friends !== "[]";
-    }).length;
     const achievementRate =
       studentsWithFriendsDefined > 0
         ? (totalWithFriend / studentsWithFriendsDefined) * 100
