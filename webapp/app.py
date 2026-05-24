@@ -1368,6 +1368,7 @@ def api_school_year_import():
                 students_data[grade_name]['solver_baseline'] = assignments.copy()
                 students_data[grade_name]['class_names'] = class_names
                 students_data[grade_name]['num_classes'] = num_classes
+                students_data[grade_name]['available_teachers'] = class_order
         else:
             grade_entry = {
                 'students': clean_students,
@@ -1380,6 +1381,7 @@ def api_school_year_import():
             if has_assignments:
                 grade_entry['solver_baseline'] = assignments.copy()
                 grade_entry['class_names'] = class_names
+                grade_entry['available_teachers'] = class_order
             students_data[grade_name] = grade_entry
     save_school_year_data(active_year, students_data)
 
