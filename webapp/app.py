@@ -904,9 +904,11 @@ def api_list_users():
             "SELECT id, username, password, is_admin, created_at FROM users ORDER BY id"
         ).fetchall()
     return jsonify([{
-        'id': r['id'], 'username': r['username'],
+        'id': r['id'],
+        'username': r['username'] if not r['username'].startswith('_invite_') else None,
         'is_admin': bool(r['is_admin']), 'created_at': r['created_at'],
         'has_password': bool(r['password'] and r['password'] != _INVITE_PENDING),
+        'pending': r['username'].startswith('_invite_'),
     } for r in rows])
 
 
@@ -915,31 +917,26 @@ def api_create_user():
     if not session.get('is_admin'):
         return jsonify({'error': 'Admin only'}), 403
     data = request.json or {}
-    username = data.get('username', '').strip()
     is_admin = bool(data.get('is_admin', False))
-    if not username:
-        return jsonify({'error': 'username required'}), 400
 
-    # Generate a random invite code (user will set their own password on first login)
-    raw_code = secrets.token_urlsafe(12)  # ~16 chars, URL-safe
+    # Placeholder username replaced by the teacher during setup
+    temp_username = f'_invite_{secrets.token_hex(6)}'
+    raw_code = secrets.token_urlsafe(12)
     code_hash = generate_password_hash(raw_code)
     expires_at = (datetime.now() + timedelta(days=7)).isoformat()
 
-    try:
-        with _db_write_lock:
-            with get_db() as conn:
-                conn.execute(
-                    "INSERT INTO users (username, password, is_admin, created_at) VALUES (?, ?, ?, ?)",
-                    (username, _INVITE_PENDING, int(is_admin), datetime.now().isoformat())
-                )
-                user_id = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()['id']
-                conn.execute(
-                    "INSERT INTO invite_codes (user_id, code_hash, expires_at) VALUES (?, ?, ?)",
-                    (user_id, code_hash, expires_at)
-                )
-        return jsonify({'status': 'success', 'invite_code': raw_code, 'username': username})
-    except sqlite3.IntegrityError:
-        return jsonify({'error': 'Username already exists'}), 409
+    with _db_write_lock:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO users (username, password, is_admin, created_at) VALUES (?, ?, ?, ?)",
+                (temp_username, _INVITE_PENDING, int(is_admin), datetime.now().isoformat())
+            )
+            user_id = conn.execute("SELECT id FROM users WHERE username = ?", (temp_username,)).fetchone()['id']
+            conn.execute(
+                "INSERT INTO invite_codes (user_id, code_hash, expires_at) VALUES (?, ?, ?)",
+                (user_id, code_hash, expires_at)
+            )
+    return jsonify({'status': 'success', 'invite_code': raw_code})
 
 
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
@@ -1018,10 +1015,15 @@ def setup():
 
     if request.method == 'POST':
         code = request.form.get('code', '').strip()
+        username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
         confirm = request.form.get('confirm_password', '')
 
-        if len(password) < 6:
+        if not username:
+            error = 'Please choose a username.'
+        elif len(username) < 2:
+            error = 'Username must be at least 2 characters.'
+        elif len(password) < 6:
             error = 'Password must be at least 6 characters.'
         elif password != confirm:
             error = 'Passwords do not match.'
@@ -1033,6 +1035,7 @@ def setup():
                     "WHERE ic.used_at IS NULL AND ic.expires_at > ?",
                     (datetime.now().isoformat(),)
                 ).fetchall()
+                existing = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
 
             matched = None
             for c in codes:
@@ -1042,12 +1045,14 @@ def setup():
 
             if not matched:
                 error = 'Invalid or expired invite code.'
+            elif existing:
+                error = 'That username is already taken.'
             else:
                 with _db_write_lock:
                     with get_db() as conn:
                         conn.execute(
-                            "UPDATE users SET password = ? WHERE id = ?",
-                            (generate_password_hash(password), matched['user_id'])
+                            "UPDATE users SET username = ?, password = ? WHERE id = ?",
+                            (username, generate_password_hash(password), matched['user_id'])
                         )
                         conn.execute(
                             "UPDATE invite_codes SET used_at = ? WHERE id = ?",

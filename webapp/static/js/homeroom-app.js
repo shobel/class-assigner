@@ -1241,22 +1241,22 @@ async function renderUsersScreen() {
         <div class="panel-b" style="padding:0;">
           ${users.map(u => `
             <div style="display:flex;align-items:center;gap:12px;padding:12px 16px;border-bottom:1px solid var(--line-soft);">
-              <div style="width:32px;height:32px;border-radius:50%;background:var(--terra-soft);color:var(--terra);font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                ${u.username[0].toUpperCase()}
+              <div style="width:32px;height:32px;border-radius:50%;background:${u.pending ? 'var(--bg-3)' : 'var(--terra-soft)'};color:${u.pending ? 'var(--ink-4)' : 'var(--terra)'};font-size:13px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                ${u.pending ? '?' : u.username[0].toUpperCase()}
               </div>
               <div style="flex:1;min-width:0;">
                 <div style="font-size:13px;font-weight:500;color:var(--ink);display:flex;align-items:center;gap:6px;">
-                  ${u.username}${u.id === me.id ? ' <span style="font-size:11px;color:var(--ink-4);font-weight:400;">(you)</span>' : ''}
-                  ${!u.has_password ? '<span style="font-size:10px;font-weight:600;background:oklch(0.94 0.06 80);color:oklch(0.50 0.10 60);padding:2px 6px;border-radius:4px;letter-spacing:0.03em;">PENDING SETUP</span>' : ''}
+                  ${u.pending ? '<span style="color:var(--ink-4);font-style:italic;">Pending setup</span>' : u.username}
+                  ${u.id === me.id ? ' <span style="font-size:11px;color:var(--ink-4);font-weight:400;">(you)</span>' : ''}
                 </div>
-                <div style="font-size:11px;color:var(--ink-4);">${u.is_admin ? 'Admin' : 'Teacher'} · joined ${new Date(u.created_at).toLocaleDateString()}</div>
+                <div style="font-size:11px;color:var(--ink-4);">${u.is_admin ? 'Admin' : 'Teacher'} · invited ${new Date(u.created_at).toLocaleDateString()}</div>
               </div>
               <div style="display:flex;gap:6px;">
                 ${!u.has_password
-                  ? `<button class="btn ghost sm" onclick="regenerateInvite(${u.id}, '${escAttr(u.username)}')">New invite</button>`
+                  ? `<button class="btn ghost sm" onclick="regenerateInvite(${u.id})">New invite</button>`
                   : `<button class="btn ghost sm" onclick="openChangePasswordModal(${u.id}, '${escAttr(u.username)}', ${u.id === me.id})">Change password</button>`
                 }
-                ${u.id !== me.id ? `<button class="btn ghost sm" style="color:var(--rose);" onclick="deleteUser(${u.id}, '${escAttr(u.username)}')">Remove</button>` : ''}
+                ${u.id !== me.id ? `<button class="btn ghost sm" style="color:var(--rose);" onclick="deleteUser(${u.id}, '${escAttr(u.username || '')}')">Remove</button>` : ''}
               </div>
             </div>
           `).join('')}
@@ -1273,57 +1273,46 @@ async function openCreateUserModal() {
     <div style="background:var(--bg);border-radius:var(--rad-lg);padding:28px;max-width:420px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
       <div style="font-size:16px;font-weight:600;margin-bottom:8px;">Add user</div>
       <div style="font-size:13px;color:var(--ink-3);margin-bottom:20px;line-height:1.5;">
-        An invite code will be generated. Share it with the user — they'll use it to set their own password at <strong>/setup</strong>.
+        An invite code will be generated. The user will choose their own username and password when they set up their account.
       </div>
-      <label style="display:block;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:5px;">Username</label>
-      <input id="newUserName" type="text" placeholder="e.g. jsmith"
-        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--line);border-radius:var(--rad);font-size:14px;font-family:inherit;background:var(--bg-2);color:var(--ink);outline:none;margin-bottom:14px;">
       <label style="display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2);margin-bottom:20px;cursor:pointer;">
         <input type="checkbox" id="newUserAdmin"> Grant admin privileges
       </label>
       <div id="createUserError" style="display:none;color:var(--rose);font-size:12px;margin-bottom:10px;"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;">
         <button class="btn ghost" onclick="this.closest('[style*=fixed]').remove()">Cancel</button>
-        <button class="btn primary" onclick="submitCreateUser()">Create &amp; get invite code</button>
+        <button class="btn primary" onclick="submitCreateUser()">Generate invite code</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
-  setTimeout(() => document.getElementById('newUserName')?.focus(), 50);
 }
 window.openCreateUserModal = openCreateUserModal;
 
 async function submitCreateUser() {
-  const username = document.getElementById('newUserName').value.trim();
   const is_admin = document.getElementById('newUserAdmin').checked;
   const errEl = document.getElementById('createUserError');
 
-  if (!username) {
-    errEl.textContent = 'Username is required.';
-    errEl.style.display = '';
-    return;
-  }
   const res = await fetch('/api/users', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, is_admin }),
+    body: JSON.stringify({ is_admin }),
   });
   const d = await res.json();
   if (res.ok) {
-    // Replace modal content with invite code display
     const box = document.querySelector('[style*=fixed] > div');
     const setupUrl = await _getSetupUrl();
     box.innerHTML = `
-      <div style="font-size:16px;font-weight:600;margin-bottom:8px;">Invite code for ${escAttr(d.username)}</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:8px;">Invite code generated</div>
       <div style="font-size:13px;color:var(--ink-3);margin-bottom:16px;line-height:1.5;">
-        Share this code with <strong>${escAttr(d.username)}</strong>. They go to <a href="${setupUrl}" target="_blank" style="color:var(--terra);">/setup</a> and enter it to create their password. The code expires in 7 days.
+        Share this code. They go to <a href="${setupUrl}" target="_blank" style="color:var(--terra);">${setupUrl}</a> and enter it to choose their username and password. Expires in 7 days.
       </div>
       <div style="background:var(--bg-2);border:1px solid var(--line);border-radius:var(--rad);padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:18px;letter-spacing:0.05em;text-align:center;margin-bottom:16px;cursor:pointer;user-select:all;" id="inviteCodeBox" title="Click to copy">
         ${escAttr(d.invite_code)}
       </div>
       <div id="copyConfirm" style="text-align:center;font-size:12px;color:var(--ink-4);margin-bottom:16px;">Click the code to copy</div>
       <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <a class="btn ghost" href="${_inviteMailto(d.username, d.invite_code, setupUrl)}" target="_blank">Send via email</a>
+        <a class="btn ghost" href="${_inviteMailto(d.invite_code, setupUrl)}" target="_blank">Send via email</a>
         <button class="btn primary" onclick="this.closest('[style*=fixed]').remove(); showScreen('users');">Done</button>
       </div>
     `;
@@ -1334,7 +1323,7 @@ async function submitCreateUser() {
       });
     });
   } else {
-    errEl.textContent = d.error || 'Failed to create user.';
+    errEl.textContent = d.error || 'Failed to create invite.';
     errEl.style.display = '';
   }
 }
@@ -1348,13 +1337,13 @@ async function _getSetupUrl() {
   return `${window.location.origin}/setup`;
 }
 
-function _inviteMailto(username, code, setupUrl) {
+function _inviteMailto(code, setupUrl) {
   const subject = encodeURIComponent('Your Classify invite');
   const body = encodeURIComponent(
-    `Hi ${username},\n\nYou've been invited to Classify. Follow these steps to set up your account:\n\n` +
+    `You've been invited to Classify. Follow these steps to set up your account:\n\n` +
     `1. Go to: ${setupUrl}\n` +
     `2. Enter your invite code: ${code}\n` +
-    `3. Choose a password\n\n` +
+    `3. Choose a username and password\n\n` +
     `Your invite code expires in 7 days.\n\nWelcome aboard!`
   );
   return `mailto:?subject=${subject}&body=${body}`;
@@ -1382,16 +1371,16 @@ async function regenerateInvite(userId, username) {
   const setupUrl = await _getSetupUrl();
   modal.innerHTML = `
     <div style="background:var(--bg);border-radius:var(--rad-lg);padding:28px;max-width:420px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
-      <div style="font-size:16px;font-weight:600;margin-bottom:8px;">New invite code for ${username}</div>
+      <div style="font-size:16px;font-weight:600;margin-bottom:8px;">New invite code</div>
       <div style="font-size:13px;color:var(--ink-3);margin-bottom:16px;line-height:1.5;">
-        Have them go to <a href="${setupUrl}" target="_blank" style="color:var(--terra);">/setup</a> and enter this code. Expires in 7 days.
+        Have them go to <a href="${setupUrl}" target="_blank" style="color:var(--terra);">${setupUrl}</a> and enter this code. Expires in 7 days.
       </div>
       <div style="background:var(--bg-2);border:1px solid var(--line);border-radius:var(--rad);padding:14px 16px;font-family:'JetBrains Mono',monospace;font-size:18px;letter-spacing:0.05em;text-align:center;margin-bottom:16px;cursor:pointer;user-select:all;" id="reInviteCodeBox" title="Click to copy">
         ${d.invite_code}
       </div>
       <div id="reCopyConfirm" style="text-align:center;font-size:12px;color:var(--ink-4);margin-bottom:16px;">Click the code to copy</div>
       <div style="display:flex;gap:8px;justify-content:flex-end;">
-        <a class="btn ghost" href="${_inviteMailto(username, d.invite_code, setupUrl)}" target="_blank">Send via email</a>
+        <a class="btn ghost" href="${_inviteMailto(d.invite_code, setupUrl)}" target="_blank">Send via email</a>
         <button class="btn primary" onclick="this.closest('[style*=fixed]').remove()">Done</button>
       </div>
     </div>`;

@@ -108,7 +108,7 @@
 
       {% if success %}
       <div class="login-success">
-        Your password has been set. <a href="/login">Sign in now →</a>
+        Your account is ready. <a href="/login">Sign in now →</a>
       </div>
       {% else %}
 
@@ -120,13 +120,16 @@
         <label for="code">Invite code</label>
         <input id="code" name="code" type="text" placeholder="Paste your invite code" autocomplete="off" autofocus required />
 
+        <label for="username">Choose a username</label>
+        <input id="username" name="username" type="text" placeholder="e.g. jsmith" autocomplete="username" required />
+
         <label for="password">Choose a password</label>
         <input id="password" name="password" type="password" autocomplete="new-password" required />
 
         <label for="confirm_password">Confirm password</label>
         <input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" required />
 
-        <button class="login-btn" type="submit">Set password</button>
+        <button class="login-btn" type="submit">Create account</button>
       </form>
 
       <div style="margin-top:16px;font-size:12px;color:var(--ink-4);text-align:center;">
