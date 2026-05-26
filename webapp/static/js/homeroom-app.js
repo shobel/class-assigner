@@ -1312,7 +1312,7 @@ async function submitCreateUser() {
   if (res.ok) {
     // Replace modal content with invite code display
     const box = document.querySelector('[style*=fixed] > div');
-    const setupUrl = `${window.location.origin}/setup`;
+    const setupUrl = await _getSetupUrl();
     box.innerHTML = `
       <div style="font-size:16px;font-weight:600;margin-bottom:8px;">Invite code for ${escAttr(d.username)}</div>
       <div style="font-size:13px;color:var(--ink-3);margin-bottom:16px;line-height:1.5;">
@@ -1339,6 +1339,14 @@ async function submitCreateUser() {
   }
 }
 window.submitCreateUser = submitCreateUser;
+
+async function _getSetupUrl() {
+  if (window.location.hostname === '127.0.0.1') {
+    const info = await fetch('/api/server-info').then(r => r.json()).catch(() => null);
+    if (info && info.url) return `${info.url}/setup`;
+  }
+  return `${window.location.origin}/setup`;
+}
 
 function _inviteMailto(username, code, setupUrl) {
   const subject = encodeURIComponent('Your Classify invite');
@@ -1371,7 +1379,7 @@ async function regenerateInvite(userId, username) {
 
   const modal = document.createElement('div');
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
-  const setupUrl = `${window.location.origin}/setup`;
+  const setupUrl = await _getSetupUrl();
   modal.innerHTML = `
     <div style="background:var(--bg);border-radius:var(--rad-lg);padding:28px;max-width:420px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
       <div style="font-size:16px;font-weight:600;margin-bottom:8px;">New invite code for ${username}</div>
