@@ -124,8 +124,9 @@ async function setCurrentYear(year) {
 }
 window.setCurrentYear = setCurrentYear;
 
-// Create next school year
+// Create next school year (admin only)
 async function createNextYear() {
+  if (!window.classifyIsAdmin) return;
   showTransitionWizard();
 }
 
@@ -1537,6 +1538,27 @@ function renderSchoolConfigScreen() {
             <p style="font-size:11px;color:var(--ink-3);line-height:1.5">
               Students at the highest grade are graduated out when creating a new school year.
             </p>
+          </div>
+        </div>
+
+        <div class="panel" style="margin-top:16px">
+          <div class="panel-h">
+            <h3>Roster</h3>
+            <span class="sub">all grades · current year</span>
+          </div>
+          <div class="panel-b" style="display:flex;flex-direction:column;gap:10px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
+              <p style="margin:0;font-size:12px;color:var(--ink-3);line-height:1.6;">
+                Download a single CSV with every student across all grades, including class assignments where available.
+              </p>
+              <button class="btn sm ghost" style="white-space:nowrap;flex-shrink:0;" onclick="exportAllGradesCSV()">Export all grades</button>
+            </div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:10px;border-top:1px solid var(--line-soft);">
+              <p style="margin:0;font-size:12px;color:var(--ink-3);line-height:1.6;">
+                Replace all grades and students by uploading a new CSV. Existing assignments will be cleared.
+              </p>
+              <button class="btn sm ghost" style="white-space:nowrap;flex-shrink:0;" onclick="showImportModal('schoolYear')">Re-import roster</button>
+            </div>
           </div>
         </div>
 
@@ -3520,7 +3542,7 @@ function generateCompactBalanceStrip(
           } else {
             const rounded = Math.round(optimality);
             if (rounded === 100) {
-              status = "✓ Perfect";
+              status = "✓ Optimal";
               statusColor = "var(--sage)";
             } else {
               status = `${rounded}%`;
@@ -3615,7 +3637,7 @@ function calculateBalanceStats(classesList) {
       if (!hasData) return "";
 
       // Calculate balance score (lower is better)
-      let balanceScore = "Perfect";
+      let balanceScore = "Optimal";
       let balanceColor = "var(--terra)";
 
       // Get all unique values across all classes
@@ -3976,7 +3998,7 @@ function calculateRelationshipStats(classesList) {
       totalPairs > 0 ? ((totalPairs - violationCount) / totalPairs) * 100 : 100;
 
     let qualityColor = violationCount === 0 ? "var(--terra)" : "var(--rose)";
-    let qualityLabel = violationCount === 0 ? "Perfect" : "VIOLATIONS";
+    let qualityLabel = violationCount === 0 ? "Optimal" : "VIOLATIONS";
 
     incompatibilityHTML = `
       <div class="panel">
@@ -4077,7 +4099,7 @@ function calculateRelationshipStats(classesList) {
     );
     const violationCount = violations.length;
     const qualityColor = violationCount === 0 ? "var(--terra)" : "var(--rose)";
-    const qualityLabel = violationCount === 0 ? "Perfect" : "Violations";
+    const qualityLabel = violationCount === 0 ? "Optimal" : "Violations";
 
     teacherUniquenessHTML = `
       <div class="panel">
@@ -4875,13 +4897,67 @@ function _impBuildStudents(state) {
     }
     students.push(student);
   }
+
+  // Apply name overrides (used to resolve duplicate names)
+  if (state.nameOverrides && Object.keys(state.nameOverrides).length > 0) {
+    const occIdx = {};
+    for (const st of students) {
+      const orig = st.name;
+      const i = occIdx[orig] ?? 0;
+      occIdx[orig] = i + 1;
+      const key = `\x1F${orig}\x1F${i}`;
+      if (state.nameOverrides[key]) st.name = state.nameOverrides[key];
+    }
+  }
+
   return students;
 }
+
+// Find duplicate names within each grade (or across the single student list).
+// Returns { gradeName: { studentName: count } } for names appearing more than once.
+// Grade key is '' for single-grade imports.
+function _impRawDups(state) {
+  const tempState = { ...state, nameOverrides: {} };
+  const data = state.mode === 'schoolYear'
+    ? _impBuildByGrade(tempState)
+    : { '': _impBuildStudents(tempState) };
+  const result = {};
+  for (const [grade, students] of Object.entries(data)) {
+    const counts = {};
+    for (const st of students) counts[st.name] = (counts[st.name] || 0) + 1;
+    for (const [name, cnt] of Object.entries(counts)) {
+      if (cnt > 1) { if (!result[grade]) result[grade] = {}; result[grade][name] = cnt; }
+    }
+  }
+  return result;
+}
+
+// Returns true if all raw duplicates have been assigned unique non-empty override names.
+function _impDupsResolved(state, rawDups) {
+  for (const [grade, names] of Object.entries(rawDups)) {
+    for (const [origName, count] of Object.entries(names)) {
+      const vals = [];
+      for (let i = 0; i < count; i++) {
+        const key = `${grade}\x1F${origName}\x1F${i}`;
+        const v = (state.nameOverrides?.[key] ?? '').trim();
+        vals.push(v || origName);
+      }
+      if (new Set(vals).size !== count) return false;
+    }
+  }
+  return true;
+}
+
+window._impSetNameOverride = function(grade, origName, idx, val) {
+  const key = `${grade}\x1F${origName}\x1F${idx}`;
+  _impState.nameOverrides[key] = val.trim();
+  _impRender();
+};
 
 let _impState = null;
 
 function showImportModal(mode) {
-  _impState = { step:1, mode: mode || 'grade', rawRows:[], columns:[], colMappings:{}, valMappings:{}, gradeMapping:{}, extraPrefs:{} };
+  _impState = { step:1, mode: mode || 'grade', rawRows:[], columns:[], colMappings:{}, valMappings:{}, gradeMapping:{}, extraPrefs:{}, nameOverrides:{} };
   _impRender();
   document.getElementById('importModal').classList.add('open');
 }
@@ -5176,6 +5252,51 @@ function _impStep4HTML() {
   const hasUnrecognizedGrades = _impUnrecognizedGrades(s).length > 0;
   const backStep = (_impAllRecognized(_impValueFields(s)) && !hasUnrecognizedGrades) ? 2 : 3;
 
+  // Detect duplicate names
+  const rawDups = _impRawDups(s);
+  const hasDups = Object.keys(rawDups).length > 0;
+  const dupsResolved = !hasDups || _impDupsResolved(s, rawDups);
+
+  let dupHTML = '';
+  if (hasDups) {
+    const gradeOrder = ['Kindergarten','1st Grade','2nd Grade','3rd Grade','4th Grade','5th Grade','6th Grade','7th Grade','8th Grade'];
+    const gradeKeys = Object.keys(rawDups).sort((a, b) => {
+      const ai = gradeOrder.indexOf(a), bi = gradeOrder.indexOf(b);
+      return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+    const inputStyle = 'padding:5px 8px;border:1px solid var(--line);border-radius:var(--rad);font-size:12px;font-family:inherit;background:var(--bg);color:var(--ink);width:220px;';
+
+    const groupsHTML = gradeKeys.map(grade => {
+      const names = rawDups[grade];
+      const displayGrade = grade || 'This grade';
+      const namesHTML = Object.entries(names).map(([origName, count]) => {
+        const occInputs = Array.from({ length: count }, (_, i) => {
+          const key = `${grade}\x1F${origName}\x1F${i}`;
+          const val = (s.nameOverrides?.[key] ?? '').trim() || origName;
+          const escapedGrade = escAttr(grade);
+          const escapedName = escAttr(origName);
+          return `<input type="text" style="${inputStyle}" value="${escAttr(val)}"
+            onchange="_impSetNameOverride('${escapedGrade}', '${escapedName}', ${i}, this.value)"
+            placeholder="Enter unique name">`;
+        }).join('');
+        return `<div style="margin-bottom:8px;">
+          <div style="font-size:11px;color:var(--ink-3);margin-bottom:4px;font-style:italic;">
+            "${escAttr(origName)}" appears ${count} times — give each a unique name:
+          </div>
+          <div style="display:flex;flex-direction:column;gap:4px;">${occInputs}</div>
+        </div>`;
+      }).join('');
+      return `${gradeKeys.length > 1 || grade ? `<div style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin-bottom:6px;margin-top:8px;">${escAttr(displayGrade)}</div>` : ''}${namesHTML}`;
+    }).join('');
+
+    dupHTML = `<div style="margin-bottom:12px;padding:12px 14px;background:var(--amber-bg,#fffbf0);border:1px solid var(--amber,#d4a017);border-radius:var(--rad);">
+      <div style="font-size:13px;font-weight:500;color:var(--ink);margin-bottom:10px;">
+        Duplicate names detected — rename each student before importing
+      </div>
+      ${groupsHTML}
+    </div>`;
+  }
+
   let summary, tableHTML;
 
   if (s.mode === 'schoolYear') {
@@ -5231,12 +5352,13 @@ function _impStep4HTML() {
       <span>${summary}</span>
       <span style="font-size:12px;color:var(--rose);">Replaces existing students &amp; assignments</span>
     </div>
+    ${dupHTML}
     ${assignedClassNote}
     <div style="overflow:auto;max-height:320px;border:1px solid var(--line);border-radius:var(--rad);">${tableHTML}</div>
     <div id="imp-err" style="margin-top:10px;font-size:13px;color:var(--rose);display:none;"></div>
     <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
       <button class="btn ghost" onclick="_impState.step=${backStep};_impRender()">Back</button>
-      <button class="btn primary" id="imp-confirm-btn" onclick="_impConfirm()">Import ${confirmCount} students</button>
+      <button class="btn primary" id="imp-confirm-btn" ${dupsResolved ? '' : 'disabled'} onclick="_impConfirm()">Import ${confirmCount} students</button>
     </div>`;
 }
 
@@ -5276,6 +5398,21 @@ function _impBuildByGrade(state) {
     }
     byGrade[gradeName].push(student);
   }
+
+  // Apply name overrides (used to resolve duplicate names)
+  if (state.nameOverrides && Object.keys(state.nameOverrides).length > 0) {
+    for (const [gradeName, students] of Object.entries(byGrade)) {
+      const occIdx = {};
+      for (const st of students) {
+        const orig = st.name;
+        const i = occIdx[orig] ?? 0;
+        occIdx[orig] = i + 1;
+        const key = `${gradeName}\x1F${orig}\x1F${i}`;
+        if (state.nameOverrides[key]) st.name = state.nameOverrides[key];
+      }
+    }
+  }
+
   return byGrade;
 }
 
@@ -5387,8 +5524,13 @@ function showStudentDetail(name) {
 
   panel.innerHTML = `
     <div class="detail-h">
-      <div>
-        <div class="nm" style="cursor:pointer;" title="Click to rename" data-mutates="true" onclick="startStudentNameEdit(this, '${student.name.replace(/'/g, "\\'")}')">${student.name}</div>
+      <div style="min-width:0;">
+        <div style="display:flex;align-items:center;gap:6px;">
+          <div class="nm">${student.name}</div>
+          <button class="btn ghost sm" data-mutates="true" title="Rename student"
+            onclick="startStudentNameEdit(this.previousElementSibling, '${student.name.replace(/'/g, "\\'")}')"
+            style="padding:2px 6px;font-size:12px;flex-shrink:0;">✎</button>
+        </div>
         <div class="gr">${currentGrade?.name || "Grade"}</div>
       </div>
       <button class="btn ghost sm" onclick="closeStudentDetail()">✕</button>
@@ -5635,25 +5777,37 @@ function closeStudentDetail() {
 }
 
 function startStudentNameEdit(el, currentName) {
+  const wrapper = document.createElement("div");
+  wrapper.style.cssText = "display:flex;flex-direction:column;gap:3px;";
+
   const input = document.createElement("input");
   input.type = "text";
   input.value = currentName;
   input.style.cssText =
     "font:inherit;font-size:inherit;font-weight:inherit;color:inherit;background:transparent;border:none;border-bottom:1px solid var(--terra);outline:none;width:200px;padding:0;";
-  el.replaceWith(input);
+
+  const errMsg = document.createElement("div");
+  errMsg.style.cssText = "font-size:11px;color:var(--rose);display:none;";
+
+  wrapper.appendChild(input);
+  wrapper.appendChild(errMsg);
+  el.replaceWith(wrapper);
   input.focus();
   input.select();
 
+  // Clear error on each keystroke
+  input.addEventListener("input", () => { errMsg.style.display = "none"; input.style.borderBottomColor = "var(--terra)"; });
+
+  const cancel = () => { wrapper.replaceWith(el); };
+
   const finish = async () => {
     const newName = input.value.trim();
-    if (!newName || newName === currentName) {
-      input.replaceWith(el);
-      return;
-    }
-    // Check for duplicate
+    if (!newName || newName === currentName) { cancel(); return; }
     if ((window.currentStudents || []).some((s) => s.name === newName)) {
-      showNotice("A student with that name already exists", "error");
-      input.replaceWith(el);
+      errMsg.textContent = "Another student in this grade already has that name.";
+      errMsg.style.display = "block";
+      input.style.borderBottomColor = "var(--rose)";
+      input.focus();
       return;
     }
     await renameStudent(currentName, newName);
@@ -5661,11 +5815,8 @@ function startStudentNameEdit(el, currentName) {
 
   input.addEventListener("blur", finish);
   input.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") input.blur();
-    if (e.key === "Escape") {
-      input.value = currentName;
-      input.blur();
-    }
+    if (e.key === "Enter") { e.preventDefault(); finish(); }
+    if (e.key === "Escape") { input.value = currentName; cancel(); }
   });
 }
 
@@ -5972,7 +6123,7 @@ async function removeRelation(studentName, type, targetName) {
 function handleGradeCSVFile(file) {
   if (!file || !currentGrade) return;
   // Open the import modal wizard with the file pre-loaded
-  _impState = { step:1, rawRows:[], columns:[], colMappings:{}, valMappings:{} };
+  _impState = { step:1, rawRows:[], columns:[], colMappings:{}, valMappings:{}, nameOverrides:{} };
   _impRender();
   document.getElementById('importModal').classList.add('open');
   _impHandleFile(file);
@@ -6839,6 +6990,70 @@ function sortStudents(sortBy) {
   }
 }
 
+async function exportAllGradesCSV() {
+  if (!grades || grades.length === 0) {
+    showNotice('No grades to export.', 'error');
+    return;
+  }
+
+  const gradeOrder = ['Kindergarten','1st Grade','2nd Grade','3rd Grade','4th Grade','5th Grade','6th Grade','7th Grade','8th Grade'];
+  const levelLabel = { h: 'High', m: 'Medium', l: 'Low' };
+  const genderLabel = { b: 'Boy', g: 'Girl' };
+
+  const allRows = [];
+
+  for (const grade of [...grades].sort((a, b) => gradeOrder.indexOf(a.name) - gradeOrder.indexOf(b.name))) {
+    const [studentsRes, assignRes] = await Promise.all([
+      fetch(`/api/grades/${grade.id}/students`),
+      fetch(`/api/grades/${grade.id}/assignments`),
+    ]);
+    const studentsData = await studentsRes.json();
+    const assignData = await assignRes.json();
+
+    const students = studentsData.students || [];
+    const assignments = assignData.assignments || [];
+    const classNames = assignData.class_names || {};
+
+    const classOf = {};
+    for (const a of assignments) classOf[a.name] = a.assigned_class;
+
+    for (const s of students) {
+      const classNum = classOf[s.name];
+      const className = classNum ? (classNames[String(classNum)] || `Class ${classNum}`) : '';
+      allRows.push({
+        Grade: grade.name,
+        Class: className,
+        Name: s.name || '',
+        Gender: genderLabel[s.gender] || s.gender || '',
+        Math: levelLabel[s.math] || s.math || '',
+        Reading: levelLabel[s.reading] || s.reading || '',
+        Behavior: s.behavior || '',
+        Independence: s.independence || '',
+        IEP: s.iep ? 'Yes' : 'No',
+        '504 Plan': s['504'] ? 'Yes' : 'No',
+        ESL: s.esl ? 'Yes' : 'No',
+        GATE: s.gate ? 'Yes' : 'No',
+      });
+    }
+  }
+
+  if (allRows.length === 0) {
+    showNotice('No students to export.', 'error');
+    return;
+  }
+
+  const headers = Object.keys(allRows[0]);
+  const csvLines = [
+    headers.join(','),
+    ...allRows.map(row =>
+      headers.map(h => `"${String(row[h] ?? '').replace(/"/g, '""')}"`).join(',')
+    ),
+  ];
+
+  const year = (config.active_school_year || config.school_year || '').replace(/[–—]/g, '-');
+  downloadCSV(csvLines.join('\n'), year ? `roster_${year}.csv` : 'roster_all_grades.csv');
+}
+
 function exportCSV() {
   // Export student roster
   if (!window.currentStudents) return;
@@ -6980,6 +7195,7 @@ window.filterStudents = filterStudents;
 window.sortStudents = sortStudents;
 window.exportCSV = exportCSV;
 window.exportAssignmentCSV = exportAssignmentCSV;
+window.exportAllGradesCSV = exportAllGradesCSV;
 window.switchSchoolYear = switchSchoolYear;
 window.createNextYear = createNextYear;
 window.clearSchoolYear = clearSchoolYear;
@@ -7517,7 +7733,7 @@ function showBalanceStatsModal() {
       if (!hasData) return "";
 
       // Calculate balance score (lower is better)
-      let balanceScore = "Perfect";
+      let balanceScore = "Optimal";
       let balanceColor = "var(--terra)";
 
       // Get all unique values across all classes

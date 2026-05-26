@@ -218,9 +218,11 @@
 
         <div class="side-section">
           School years
+          {% if is_admin %}
           <button title="Create next school year" onclick="createNextYear()">
             ↗
           </button>
+          {% endif %}
         </div>
         <div
           class="nav"
@@ -318,16 +320,15 @@
             <h4>What is "Balance"?</h4>
             <p>
               Balance measures how evenly students are distributed across
-              classes. Perfect balance means each class has similar numbers of
-              students in each category.
+              classes. Optimal balance means each class has the most even
+              distribution possible given the number of students.
             </p>
           </div>
           <div class="info-section">
             <h4>Balance Quality Ratings</h4>
             <ul>
               <li>
-                <strong>Perfect:</strong> Nearly identical distribution across
-                all classes
+                <strong>Optimal:</strong> Best achievable distribution given class counts
               </li>
               <li>
                 <strong>Excellent:</strong> Very minor differences between
@@ -369,7 +370,7 @@
             </p>
             <ul>
               <li>
-                <strong>σ = 0:</strong> Perfect balance (all classes have equal
+                <strong>σ = 0:</strong> Optimal balance (all classes have equal
                 numbers)
               </li>
               <li>
@@ -398,12 +399,12 @@
                 Example: IEP (10 total students across 5 classes)
               </div>
 
-              <!-- Perfect case -->
+              <!-- Optimal case -->
               <div style="margin-bottom: 16px">
                 <div
                   style="font-size: 10px; font-weight: 600; margin-bottom: 4px"
                 >
-                  Perfect balance: σ = 0.00
+                  Optimal balance: σ = 0.00
                 </div>
                 <div
                   style="position: relative; height: 20px; margin-bottom: 6px"
@@ -522,7 +523,7 @@
                 <div
                   style="font-size: 9px; color: var(--terra); margin-top: 4px"
                 >
-                  Dot on the left = perfectly balanced
+                  Dot on the left = optimally balanced
                 </div>
               </div>
 
@@ -851,9 +852,8 @@
         <div class="transition-header">
           <h2>Create <em id="next-year-name">2026–27</em></h2>
           <p class="lede">
-            Review promoted students, import new Kindergarten class, and make
-            adjustments before finalizing next year. New students can be added
-            to grades after the new school year is created.
+            Review promoted students and make adjustments before finalizing next year.
+            Use the + button on any grade to add new students, including new Kindergartners.
           </p>
           <div class="transition-search-bar">
             <svg
