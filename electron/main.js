@@ -6,14 +6,17 @@ const http = require('http');
 const os = require('os');
 
 const PORT = 5001;
-const SERVICE_LABEL = 'com.classify.server';
-const SERVICE_PLIST  = path.join(os.homedir(), 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`);
-const SERVICE_BIN_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'Classify');
-const SERVICE_BIN    = path.join(SERVICE_BIN_DIR, 'classify-server');
+const SERVICE_LABEL   = 'com.classify.server';
+const SERVICE_PLIST   = path.join(os.homedir(), 'Library', 'LaunchAgents', `${SERVICE_LABEL}.plist`);
 const SERVICE_LOG_DIR = path.join(os.homedir(), 'Library', 'Logs', 'Classify');
 
-let mainWindow  = null;
+let mainWindow   = null;
 let flaskProcess = null; // dev mode only
+
+// Returns the server binary path inside the app bundle (includes _internal/ alongside it)
+function getServerBin() {
+  return path.join(process.resourcesPath, 'server', 'classify-server');
+}
 
 // ── Health check ──────────────────────────────────────────────────────────────
 
@@ -33,7 +36,9 @@ function waitForServer(timeout = 20000) {
     const poll = async () => {
       if (await checkHealth()) return resolve();
       if (Date.now() - start > timeout) {
-        return reject(new Error('Server did not respond within 20 seconds.\n\nCheck logs at:\n' + SERVICE_LOG_DIR));
+        return reject(new Error(
+          'Server did not respond within 20 seconds.\n\nCheck logs at:\n' + SERVICE_LOG_DIR
+        ));
       }
       setTimeout(poll, 500);
     };
@@ -44,6 +49,7 @@ function waitForServer(timeout = 20000) {
 // ── launchd service management (macOS packaged) ───────────────────────────────
 
 function makePlist() {
+  const bin    = getServerBin();
   const logOut = path.join(SERVICE_LOG_DIR, 'server.log');
   const logErr = path.join(SERVICE_LOG_DIR, 'server-error.log');
   return `<?xml version="1.0" encoding="UTF-8"?>
@@ -54,8 +60,10 @@ function makePlist() {
     <string>${SERVICE_LABEL}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>${SERVICE_BIN}</string>
+        <string>${bin}</string>
     </array>
+    <key>WorkingDirectory</key>
+    <string>${path.dirname(bin)}</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>CLASSIFY_SERVICE</key>
@@ -82,49 +90,23 @@ function launchctl(...args) {
   });
 }
 
-async function installService() {
-  const srcBin = path.join(process.resourcesPath, 'server', 'classify-server');
-  fs.mkdirSync(SERVICE_BIN_DIR, { recursive: true });
+async function ensureService() {
+  if (await checkHealth()) return; // already running
+
+  // Unload stale plist if present
+  if (fs.existsSync(SERVICE_PLIST)) {
+    try { await launchctl('unload', SERVICE_PLIST); } catch {}
+  }
+
+  // Ensure binary is executable and dirs exist
+  const bin = getServerBin();
+  fs.chmodSync(bin, 0o755);
   fs.mkdirSync(path.dirname(SERVICE_PLIST), { recursive: true });
   fs.mkdirSync(SERVICE_LOG_DIR, { recursive: true });
-  fs.copyFileSync(srcBin, SERVICE_BIN);
-  fs.chmodSync(SERVICE_BIN, 0o755);
+
+  // Write plist pointing to binary inside app bundle (where _internal/ lives)
   fs.writeFileSync(SERVICE_PLIST, makePlist());
   await launchctl('load', SERVICE_PLIST);
-}
-
-async function updateServiceBinary() {
-  // Stop, swap binary, restart
-  try { await launchctl('unload', SERVICE_PLIST); } catch {}
-  const srcBin = path.join(process.resourcesPath, 'server', 'classify-server');
-  fs.copyFileSync(srcBin, SERVICE_BIN);
-  fs.chmodSync(SERVICE_BIN, 0o755);
-  fs.writeFileSync(SERVICE_PLIST, makePlist());
-  await launchctl('load', SERVICE_PLIST);
-}
-
-async function ensureService() {
-  if (await checkHealth()) {
-    // Server already running — check if our binary version matches (update silently)
-    const srcBin = path.join(process.resourcesPath, 'server', 'classify-server');
-    const srcStat = fs.statSync(srcBin);
-    const dstStat = fs.existsSync(SERVICE_BIN) ? fs.statSync(SERVICE_BIN) : null;
-    if (!dstStat || srcStat.size !== dstStat.size || srcStat.mtimeMs > dstStat.mtimeMs) {
-      await updateServiceBinary();
-      await waitForServer();
-    }
-    return;
-  }
-
-  const installed = fs.existsSync(SERVICE_PLIST) && fs.existsSync(SERVICE_BIN);
-  if (!installed) {
-    await installService();
-  } else {
-    // Installed but not running — reload
-    try { await launchctl('unload', SERVICE_PLIST); } catch {}
-    await launchctl('load', SERVICE_PLIST);
-  }
-
   await waitForServer();
 }
 
@@ -220,7 +202,6 @@ app.whenReady().then(async () => {
     if (app.isPackaged && process.platform === 'darwin') {
       await ensureService();
     } else {
-      // dev mode, or Windows (falls back to spawn)
       await startFlaskDev();
     }
     createWindow();
@@ -235,12 +216,12 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-  // macOS: don't quit — launchd service keeps running even without a window
+  // macOS: don't quit — launchd service keeps running
   if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('before-quit', () => {
-  // Dev mode only: kill the spawned Flask process
+  // Dev mode only: kill spawned Flask process
   if (flaskProcess) {
     flaskProcess.kill();
     flaskProcess = null;
