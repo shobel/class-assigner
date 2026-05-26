@@ -816,7 +816,7 @@ def current_user():
 @app.before_request
 def require_login():
     """Block unauthenticated access to everything except login and static files."""
-    public = {'login', 'logout', 'static', 'setup', 'admin_recovery'}
+    public = {'login', 'logout', 'static', 'setup', 'admin_recovery', 'health'}
     if request.endpoint in public:
         return None
     if not session.get('user_id'):
