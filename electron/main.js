@@ -167,7 +167,7 @@ function buildMenu() {
         { role: 'zoomOut' },
         { type: 'separator' },
         { role: 'togglefullscreen' },
-        ...(!app.isPackaged ? [{ type: 'separator' }, { role: 'toggleDevTools' }] : []),
+        { type: 'separator' }, { role: 'toggleDevTools' },
       ],
     },
     {
