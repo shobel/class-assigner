@@ -46,14 +46,12 @@ jobs:
 
       - name: Build and sign macOS DMG
         working-directory: electron
-        run: npx electron-builder --mac --publish never
+        run: npx electron-builder --mac --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-
-      - name: List dist folder
-        run: ls -lh dist/
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload DMG artifacts
         uses: actions/upload-artifact@v4
@@ -88,11 +86,9 @@ jobs:
 
       - name: Build Windows installer
         working-directory: electron
-        run: npx electron-builder --win --publish never
-
-      - name: List dist folder
-        run: Get-ChildItem dist/ -Recurse | Select-Object FullName, Length
-        shell: powershell
+        run: npx electron-builder --win --publish ${{ startsWith(github.ref, 'refs/tags/') && 'always' || 'never' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Upload EXE artifact
         uses: actions/upload-artifact@v4
