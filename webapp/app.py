@@ -58,11 +58,15 @@ def get_data_dir():
     return data_dir
 
 
-def find_free_port():
-    """Find an available TCP port."""
+def find_free_port(preferred=5001):
+    """Return preferred port if available, otherwise any free port."""
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        s.bind(('', 0))
-        return s.getsockname()[1]
+        try:
+            s.bind(('', preferred))
+            return preferred
+        except OSError:
+            s.bind(('', 0))
+            return s.getsockname()[1]
 
 
 def get_local_ip():
@@ -1091,6 +1095,11 @@ def admin_recovery():
             success = True
 
     return render_template('admin_recovery.html', admins=admins, error=error, success=success)
+
+
+@app.route('/health')
+def health():
+    return jsonify({'status': 'ok'})
 
 
 @app.route('/')
@@ -2312,10 +2321,12 @@ def _version_tuple(v):
 
 
 if __name__ == '__main__':
-    # If launched by Electron, use a random port and signal readiness via stdout
-    if os.environ.get('CLASSIFY_ELECTRON'):
+    if os.environ.get('CLASSIFY_SERVICE'):
+        # Running as a background launchd/service — fixed port, no debug
+        app.run(host='0.0.0.0', port=5001, debug=False, use_reloader=False)
+    elif os.environ.get('CLASSIFY_ELECTRON'):
+        # Launched by Electron directly — prefer port 5001, signal readiness via stdout
         port = find_free_port()
-        # Flush immediately so Electron can read it
         print(f'CLASSIFY_PORT:{port}', flush=True)
         app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
     else:
