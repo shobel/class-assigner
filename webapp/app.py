@@ -1114,6 +1114,7 @@ def index():
         'homeroom.html',
         username=session.get('username', ''),
         is_admin=session.get('is_admin', False),
+        current_version=__version__,
     )
 
 @app.route('/old')
