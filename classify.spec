@@ -12,9 +12,10 @@ jinja_datas, jinja_bins, jinja_hiddenimports = collect_all('jinja2')
 werkzeug_datas, werkzeug_bins, werkzeug_hiddenimports = collect_all('werkzeug')
 click_datas, click_bins, click_hiddenimports = collect_all('click')
 ortools_datas, ortools_bins, ortools_hiddenimports = collect_all('ortools')
+certifi_datas, certifi_bins, certifi_hiddenimports = collect_all('certifi')
 
 all_datas = (
-    flask_datas + jinja_datas + werkzeug_datas + click_datas + ortools_datas +
+    flask_datas + jinja_datas + werkzeug_datas + click_datas + ortools_datas + certifi_datas +
     [
         ('webapp/templates', 'templates'),
         ('webapp/static',    'static'),
@@ -36,6 +37,7 @@ all_hiddenimports = (
         'markupsafe',
         'importlib_metadata',
         'pkg_resources',
+        'certifi',
     ]
 )
 

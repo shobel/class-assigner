@@ -295,24 +295,15 @@ async function startApp() {
 
 async function checkForUpdate() {
   try {
-    const res = await fetch('https://shobel.github.io/classify-website/releases/latest.json');
+    const res = await fetch('/api/check-update');
     const data = await res.json();
-    const current = window.classifyVersion || '0.0.0';
-    const latest = data.version || '0.0.0';
-    const toTuple = v => v.split('.').map(Number);
-    const [lMaj, lMin, lPat] = toTuple(latest);
-    const [cMaj, cMin, cPat] = toTuple(current);
-    const newer = lMaj > cMaj || (lMaj === cMaj && lMin > cMin) || (lMaj === cMaj && lMin === cMin && lPat > cPat);
-    if (newer) {
-      const isMac = navigator.platform.includes('Mac') || navigator.userAgent.includes('Mac');
-      const isArm = navigator.userAgent.includes('arm') || (typeof navigator.userAgentData !== 'undefined' && navigator.userAgentData?.platform === 'macOS');
-      const url = isMac ? (isArm ? (data.mac_arm_url || data.mac_url) : (data.mac_x64_url || data.mac_url)) : data.windows_url;
+    if (data.update_available) {
       const banner = document.getElementById('update-banner');
       const msg = document.getElementById('update-msg');
       const link = document.getElementById('update-link');
-      msg.textContent = `Classify ${latest} is available (you have ${current}).${data.notes ? ' ' + data.notes : ''}`;
-      link.href = url || '#';
-      if (!url) link.style.display = 'none';
+      msg.textContent = `Classify ${data.latest} is available (you have ${data.current}).${data.notes ? ' ' + data.notes : ''}`;
+      link.href = data.download_url || '#';
+      if (!data.download_url) link.style.display = 'none';
       banner.style.display = '';
     }
   } catch (e) {

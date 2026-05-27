@@ -26,7 +26,7 @@ from werkzeug.security import generate_password_hash as _gen_hash
 def generate_password_hash(password):
     return _gen_hash(password, method='pbkdf2:sha256')
 
-__version__ = '1.1.1'
+__version__ = '1.1.2'
 _UPDATE_URL = 'https://shobel.github.io/classify-website/releases/latest.json'
 
 # Sentinel stored in password column for accounts awaiting invite setup
@@ -2303,14 +2303,21 @@ def api_server_info():
 def api_check_update():
     """Check for app updates by fetching the remote manifest."""
     import urllib.request
+    import ssl
+    import certifi
     try:
+        ctx = ssl.create_default_context(cafile=certifi.where())
         req = urllib.request.Request(_UPDATE_URL, headers={'User-Agent': f'Classify/{__version__}'})
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
             data = json.loads(resp.read().decode())
         latest = data.get('version', __version__)
         if _version_tuple(latest) > _version_tuple(__version__):
             system = platform.system()
-            url = data.get('mac_url') if system == 'Darwin' else data.get('windows_url', data.get('mac_url'))
+            machine = platform.machine()
+            if system == 'Darwin':
+                url = data.get('mac_arm_url' if machine == 'arm64' else 'mac_x64_url') or data.get('mac_url')
+            else:
+                url = data.get('windows_url')
             return jsonify({
                 'update_available': True,
                 'current': __version__,
