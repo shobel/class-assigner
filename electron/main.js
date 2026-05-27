@@ -90,11 +90,38 @@ function launchctl(...args) {
   });
 }
 
-async function ensureService() {
-  if (await checkHealth()) return; // already running
+async function checkRunningVersion() {
+  try {
+    const res = await new Promise((resolve, reject) => {
+      const req = http.get(`http://127.0.0.1:${PORT}/api/version`, (r) => {
+        let body = '';
+        r.on('data', d => body += d);
+        r.on('end', () => resolve(JSON.parse(body)));
+      });
+      req.on('error', reject);
+      req.setTimeout(1500, () => { req.destroy(); reject(new Error('timeout')); });
+    });
+    return res.version || null;
+  } catch {
+    return null;
+  }
+}
 
-  // Unload stale plist if present
-  if (fs.existsSync(SERVICE_PLIST)) {
+async function ensureService() {
+  const healthy = await checkHealth();
+
+  if (healthy) {
+    // Check if the running version matches this app bundle
+    const runningVersion = await checkRunningVersion();
+    const appVersion = app.getVersion();
+    if (runningVersion === appVersion) return; // all good
+
+    // Version mismatch — restart service with new binary
+    if (fs.existsSync(SERVICE_PLIST)) {
+      try { await launchctl('unload', SERVICE_PLIST); } catch {}
+    }
+    await new Promise(r => setTimeout(r, 1000)); // let it stop
+  } else if (fs.existsSync(SERVICE_PLIST)) {
     try { await launchctl('unload', SERVICE_PLIST); } catch {}
   }
 

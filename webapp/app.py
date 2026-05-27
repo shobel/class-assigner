@@ -816,7 +816,7 @@ def current_user():
 @app.before_request
 def require_login():
     """Block unauthenticated access to everything except login and static files."""
-    public = {'login', 'logout', 'static', 'setup', 'admin_recovery', 'health'}
+    public = {'login', 'logout', 'static', 'setup', 'admin_recovery', 'health', 'api_version'}
     if request.endpoint in public:
         return None
     if not session.get('user_id'):
@@ -1105,6 +1105,11 @@ def admin_recovery():
 @app.route('/health')
 def health():
     return jsonify({'status': 'ok'})
+
+
+@app.route('/api/version')
+def api_version():
+    return jsonify({'version': __version__})
 
 
 @app.route('/')
