@@ -304,8 +304,9 @@ async function checkForUpdate() {
     const [cMaj, cMin, cPat] = toTuple(current);
     const newer = lMaj > cMaj || (lMaj === cMaj && lMin > cMin) || (lMaj === cMaj && lMin === cMin && lPat > cPat);
     if (newer) {
-      const isMac = navigator.platform.includes('Mac');
-      const url = isMac ? data.mac_url : data.windows_url;
+      const isMac = navigator.platform.includes('Mac') || navigator.userAgent.includes('Mac');
+      const isArm = navigator.userAgent.includes('arm') || (typeof navigator.userAgentData !== 'undefined' && navigator.userAgentData?.platform === 'macOS');
+      const url = isMac ? (isArm ? (data.mac_arm_url || data.mac_url) : (data.mac_x64_url || data.mac_url)) : data.windows_url;
       const banner = document.getElementById('update-banner');
       const msg = document.getElementById('update-msg');
       const link = document.getElementById('update-link');
