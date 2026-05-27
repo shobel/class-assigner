@@ -289,8 +289,9 @@ async function startApp() {
     }
   }
 
-  // Check for updates in background (non-blocking)
+  // Check for updates on load and every 30 minutes
   checkForUpdate();
+  setInterval(checkForUpdate, 30 * 60 * 1000);
 }
 
 async function checkForUpdate() {
