@@ -1586,6 +1586,11 @@ function renderSchoolConfigScreen() {
             <div id="import-status" style="display:none;margin-top:10px;font-size:12px"></div>
           </div>
         </div>
+
+        <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;">
+          <span style="font-size:12px;color:var(--ink-4);">Classify v${window.classifyVersion || '—'}</span>
+          <button class="btn sm ghost" onclick="checkForUpdate().then(() => { const b = document.getElementById('update-banner'); if (b && b.style.display === 'none') showNotice('You\'re on the latest version.', 'success'); })">Check for updates</button>
+        </div>
       </div>
     </div>
   `;

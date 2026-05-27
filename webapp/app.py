@@ -26,7 +26,7 @@ from werkzeug.security import generate_password_hash as _gen_hash
 def generate_password_hash(password):
     return _gen_hash(password, method='pbkdf2:sha256')
 
-__version__ = '1.1.0'
+__version__ = '1.1.1'
 _UPDATE_URL = 'https://shobel.github.io/classify-website/releases/latest.json'
 
 # Sentinel stored in password column for accounts awaiting invite setup
