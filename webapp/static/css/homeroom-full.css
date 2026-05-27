@@ -121,13 +121,13 @@ body {
   padding: 12px 14px 14px;
   border-bottom: 1px solid var(--line-soft);
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  gap: 0;
 }
 
 .brand-mark {
-  width: 22px;
-  height: 22px;
+  width: 28px;
+  height: 28px;
   border-radius: 6px;
   background: var(--terra);
   color: var(--bg);
@@ -137,6 +137,8 @@ body {
   font-size: 16px;
   letter-spacing: -0.02em;
   font-style: italic;
+  flex-shrink: 0;
+  overflow: hidden;
 }
 
 .brand-name {
