@@ -21,7 +21,8 @@
     "publish": {
       "provider": "github",
       "owner": "shobel",
-      "repo": "class-assigner"
+      "repo": "class-assigner",
+      "releaseType": "release"
     },
     "directories": {
       "output": "../dist"
