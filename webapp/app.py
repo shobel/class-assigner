@@ -20,14 +20,18 @@ from contextlib import contextmanager
 from pathlib import Path
 from datetime import datetime, timedelta
 import threading
+import urllib.request
+import urllib.error
 from werkzeug.security import check_password_hash
 from werkzeug.security import generate_password_hash as _gen_hash
 
 def generate_password_hash(password):
     return _gen_hash(password, method='pbkdf2:sha256')
 
-__version__ = '1.1.5'
+__version__ = '1.1.6'
 _UPDATE_URL = 'https://shobel.github.io/classify-website/releases/latest.json'
+_SUPABASE_URL = 'https://vvswzymqizfninwuoumw.supabase.co'
+_SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2c3d6eW1xaXpmbmlud3VvdW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzODg5MTcsImV4cCI6MjA5Mzk2NDkxN30.JuXEoKfKw5VNQHSMweVryNgj0qo19DscnZhK6bLy-Ps'
 
 # Sentinel stored in password column for accounts awaiting invite setup
 _INVITE_PENDING = '__invite_pending__'
@@ -937,6 +941,26 @@ def api_create_user():
                 (user_id, code_hash, expires_at)
             )
     return jsonify({'status': 'success', 'invite_code': raw_code})
+
+
+@app.route('/api/users/<int:user_id>/role', methods=['PATCH'])
+def api_toggle_user_role(user_id):
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Admin only'}), 403
+    if user_id == session.get('user_id'):
+        return jsonify({'error': "Can't change your own role"}), 400
+    data = request.json or {}
+    make_admin = bool(data.get('is_admin'))
+    # Prevent demoting the last admin
+    if not make_admin:
+        with get_db() as conn:
+            admin_count = conn.execute("SELECT COUNT(*) FROM users WHERE is_admin = 1").fetchone()[0]
+        if admin_count <= 1:
+            return jsonify({'error': 'Cannot demote the only admin account'}), 400
+    with _db_write_lock:
+        with get_db() as conn:
+            conn.execute("UPDATE users SET is_admin = ? WHERE id = ?", (int(make_admin), user_id))
+    return jsonify({'status': 'success'})
 
 
 @app.route('/api/users/<int:user_id>', methods=['DELETE'])
@@ -1937,11 +1961,34 @@ def api_activation_status():
 
 @app.route('/api/activate', methods=['POST'])
 def api_activate():
-    """Save activation after frontend has validated code with Supabase"""
+    """Validate activation code against Supabase, then save locally if valid."""
     data = request.json or {}
-    code = data.get('code', '').strip()
+    code = data.get('code', '').strip().upper()
     if not code:
         return jsonify({'error': 'No code provided'}), 400
+
+    # Validate server-side — do not trust the frontend to have done this
+    payload = json.dumps({'code': code}).encode()
+    req = urllib.request.Request(
+        f'{_SUPABASE_URL}/functions/v1/validate-code',
+        data=payload,
+        headers={
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {_SUPABASE_ANON_KEY}',
+        },
+        method='POST',
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            result = json.loads(resp.read())
+    except urllib.error.URLError:
+        return jsonify({'error': 'Could not reach activation server. Check your internet connection.'}), 503
+    except Exception:
+        return jsonify({'error': 'Activation check failed.'}), 500
+
+    if not result.get('valid'):
+        return jsonify({'error': result.get('error', 'Invalid or already used code.')}), 400
+
     config = load_config()
     config['activated'] = True
     config['activation_code'] = code

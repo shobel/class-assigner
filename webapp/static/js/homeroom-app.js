@@ -184,25 +184,14 @@ async function submitActivationCode() {
   errorEl.style.display = "none";
 
   try {
-    const res = await fetch(`${SUPABASE_URL}/functions/v1/validate-code`, {
+    const res = await fetch("/api/activate", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ code }),
     });
-
     const data = await res.json();
 
-    if (data.valid) {
-      // Save activation locally
-      await fetch("/api/activate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-      // Offer restore from backup before starting
+    if (res.ok) {
       showRestoreOption();
     } else {
       errorEl.textContent = data.error || "Invalid or already used code.";
@@ -1259,6 +1248,7 @@ async function renderUsersScreen() {
                   ? `<button class="btn ghost sm" onclick="regenerateInvite(${u.id})">New invite</button>`
                   : `<button class="btn ghost sm" onclick="openChangePasswordModal(${u.id}, '${escAttr(u.username)}', ${u.id === me.id})">Change password</button>`
                 }
+                ${u.id !== me.id ? `<button class="btn ghost sm" onclick="toggleUserRole(${u.id}, ${!u.is_admin})" title="${u.is_admin ? 'Demote to teacher' : 'Promote to admin'}">${u.is_admin ? 'Make teacher' : 'Make admin'}</button>` : ''}
                 ${u.id !== me.id ? `<button class="btn ghost sm" style="color:var(--rose);" onclick="deleteUser(${u.id}, '${escAttr(u.username || '')}')">Remove</button>` : ''}
               </div>
             </div>
@@ -1364,6 +1354,23 @@ async function deleteUser(id, username) {
 }
 window.deleteUser = deleteUser;
 
+async function toggleUserRole(id, makeAdmin) {
+  const label = makeAdmin ? 'admin' : 'teacher';
+  if (!confirm(`Change this user's role to ${label}?`)) return;
+  const res = await fetch(`/api/users/${id}/role`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ is_admin: makeAdmin }),
+  });
+  if (res.ok) {
+    showScreen('users');
+  } else {
+    const d = await res.json();
+    showNotice(d.error || 'Failed to change role.', 'error');
+  }
+}
+window.toggleUserRole = toggleUserRole;
+
 async function regenerateInvite(userId, username) {
   const res = await fetch(`/api/users/${userId}/invite`, { method: 'POST' });
   const d = await res.json();
@@ -1445,6 +1452,87 @@ async function submitChangePassword(userId, requireCurrent) {
   }
 }
 window.submitChangePassword = submitChangePassword;
+
+// ── Feedback (bug report / feature request) ───────────────────────────────────
+
+async function openFeedbackModal(type) {
+  const isBug = type === 'bug';
+  const title = isBug ? 'Report a bug' : 'Request a feature';
+  const placeholder = isBug
+    ? 'Describe what happened and what you expected…'
+    : 'Describe the feature you'd like to see…';
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+  modal.innerHTML = `
+    <div style="background:var(--bg);border-radius:var(--rad-lg);padding:28px;max-width:440px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
+      <div style="font-size:16px;font-weight:600;margin-bottom:8px;">${title}</div>
+      <textarea id="feedbackMsg" placeholder="${placeholder}"
+        style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid var(--line);border-radius:var(--rad);font-size:13px;font-family:inherit;background:var(--bg-2);color:var(--ink);outline:none;resize:vertical;min-height:100px;margin-bottom:6px;line-height:1.4;"></textarea>
+      <div id="feedbackError" style="display:none;color:var(--rose);font-size:12px;margin-bottom:10px;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn ghost" onclick="this.closest('[style*=fixed]').remove()">Cancel</button>
+        <button class="btn primary" id="feedbackSubmitBtn" onclick="submitFeedback('${type}')">Submit</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+  setTimeout(() => document.getElementById('feedbackMsg')?.focus(), 50);
+}
+window.openFeedbackModal = openFeedbackModal;
+
+async function submitFeedback(type) {
+  const msg = document.getElementById('feedbackMsg')?.value.trim();
+  const errEl = document.getElementById('feedbackError');
+  const btn = document.getElementById('feedbackSubmitBtn');
+  if (!msg) {
+    errEl.textContent = 'Please enter a message.';
+    errEl.style.display = '';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+
+  let schoolName = '';
+  try {
+    const cfg = await fetch('/api/config').then(r => r.json());
+    schoolName = cfg.school_name || '';
+  } catch (_) {}
+
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/feedback`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': SUPABASE_ANON_KEY,
+        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Prefer': 'return=minimal',
+      },
+      body: JSON.stringify({
+        type,
+        message: msg,
+        app_version: window.classifyVersion || '',
+        school_name: schoolName,
+      }),
+    });
+    if (res.ok || res.status === 201) {
+      document.querySelector('[style*=fixed] > div').innerHTML = `
+        <div style="font-size:16px;font-weight:600;margin-bottom:8px;">Thanks!</div>
+        <div style="font-size:13px;color:var(--ink-3);margin-bottom:20px;">Your ${type === 'bug' ? 'bug report' : 'feature request'} was submitted.</div>
+        <div style="display:flex;justify-content:flex-end;">
+          <button class="btn primary" onclick="this.closest('[style*=fixed]').remove()">Done</button>
+        </div>`;
+    } else {
+      throw new Error(`HTTP ${res.status}`);
+    }
+  } catch (e) {
+    errEl.textContent = 'Failed to submit. Please try again.';
+    errEl.style.display = '';
+    btn.disabled = false;
+    btn.textContent = 'Submit';
+  }
+}
+window.submitFeedback = submitFeedback;
 
 async function populateServerUrl() {
   let url = window.location.origin;
@@ -4826,7 +4914,7 @@ function _impAllFields() {
   return [..._IMP_FIELDS, ...customs];
 }
 
-const _IMP_KNOWN_KEYS = new Set(['name','firstName','lastName','grade','gender','behavior','independence','iep','504','esl','gate','math','reading','friends','incompatible','assignedClass']);
+const _IMP_KNOWN_KEYS = new Set(['name','firstName','lastName','grade','gender','behavior','independence','iep','504','esl','gate','math','reading','friends','incompatible','assignedClass','notes','previous_teachers']);
 
 function _impExtraCols(state) {
   const mapped = new Set(Object.values(state.colMappings).filter(Boolean));
@@ -5752,6 +5840,16 @@ function showStudentDetail(name) {
         </div>
       </div>
 
+      <div class="detail-section">
+        <h5 style="margin-bottom:6px;">Notes</h5>
+        <textarea id="student-notes-area"
+          placeholder="Private notes about this student (carried to next year)…"
+          style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:var(--rad);font-size:13px;font-family:inherit;background:var(--bg-2);color:var(--ink);outline:none;resize:vertical;min-height:72px;line-height:1.4;${!window.classifyIsAdmin ? 'opacity:0.7;' : ''}"
+          ${!window.classifyIsAdmin ? 'readonly' : ''}
+        >${(student.notes || '').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>
+        ${window.classifyIsAdmin ? `<button class="btn ghost sm" style="margin-top:6px;" onclick="saveStudentNote('${student.name.replace(/'/g, "\\'")}')">Save note</button>` : ''}
+      </div>
+
       ${window.classifyIsAdmin ? `
       <div class="detail-section" style="margin-top:auto; padding-top:16px; border-top:1px solid var(--line-soft)">
         <button class="btn ghost sm" style="color:var(--rose); border-color:var(--rose-soft); width:100%"
@@ -5780,6 +5878,12 @@ function showStudentDetail(name) {
 function closeStudentDetail() {
   document.getElementById("detailPanel").classList.remove("open");
 }
+
+async function saveStudentNote(studentName) {
+  const text = document.getElementById('student-notes-area')?.value ?? '';
+  await updateStudentProperty(studentName, 'notes', text);
+}
+window.saveStudentNote = saveStudentNote;
 
 function startStudentNameEdit(el, currentName) {
   const wrapper = document.createElement("div");

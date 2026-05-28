@@ -230,6 +230,18 @@
         </div>
 
         <div style="flex: 1"></div>
+        <div style="padding: 4px 12px 8px; display:flex; gap:6px;">
+          <button onclick="openFeedbackModal('bug')"
+            style="flex:1;background:none;border:1px solid var(--line-soft);border-radius:var(--rad);cursor:pointer;font-size:11px;color:var(--ink-4);padding:5px 4px;text-align:center;"
+            onmouseover="this.style.color='var(--ink)'" onmouseout="this.style.color='var(--ink-4)'">
+            Report bug
+          </button>
+          <button onclick="openFeedbackModal('feature')"
+            style="flex:1;background:none;border:1px solid var(--line-soft);border-radius:var(--rad);cursor:pointer;font-size:11px;color:var(--ink-4);padding:5px 4px;text-align:center;"
+            onmouseover="this.style.color='var(--ink)'" onmouseout="this.style.color='var(--ink-4)'">
+            Request feature
+          </button>
+        </div>
         <div style="border-top: 1px solid var(--line-soft); margin-top: 8px; padding: 10px 12px;">
           <div style="display:flex; align-items:center; gap:8px;">
             <div style="width:26px;height:26px;border-radius:50%;background:var(--terra-soft);color:var(--terra);font-size:11px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
