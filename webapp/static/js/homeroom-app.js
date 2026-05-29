@@ -1460,7 +1460,7 @@ async function openFeedbackModal(type) {
   const title = isBug ? 'Report a bug' : 'Request a feature';
   const placeholder = isBug
     ? 'Describe what happened and what you expected…'
-    : 'Describe the feature you'd like to see…';
+    : 'Describe the feature you\u2019d like to see\u2026';
 
   const modal = document.createElement('div');
   modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
