@@ -28,7 +28,7 @@ from werkzeug.security import generate_password_hash as _gen_hash
 def generate_password_hash(password):
     return _gen_hash(password, method='pbkdf2:sha256')
 
-__version__ = '1.1.11'
+__version__ = '1.1.12'
 _UPDATE_URL = 'https://shobel.github.io/classify-website/releases/latest.json'
 _SUPABASE_URL = 'https://vvswzymqizfninwuoumw.supabase.co'
 _SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2c3d6eW1xaXpmbmlud3VvdW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzODg5MTcsImV4cCI6MjA5Mzk2NDkxN30.JuXEoKfKw5VNQHSMweVryNgj0qo19DscnZhK6bLy-Ps'
@@ -2350,6 +2350,32 @@ def api_server_info():
     return jsonify({'ip': ip, 'port': port, 'url': f'http://{ip}:{port}', 'local_url': local_url})
 
 
+def _check_subscription_active():
+    """Query Supabase for is_active on the stored activation code.
+    Falls back to cached value so it works offline. Defaults to True."""
+    import urllib.request, ssl, certifi
+    config = load_config()
+    code = config.get('activation_code')
+    if not code:
+        return True  # not activated yet — don't block
+    try:
+        ctx = ssl.create_default_context(cafile=certifi.where())
+        url = f'{_SUPABASE_URL}/rest/v1/activation_codes?code=eq.{code}&select=is_active'
+        req = urllib.request.Request(url, headers={
+            'apikey': _SUPABASE_ANON_KEY,
+            'Authorization': f'Bearer {_SUPABASE_ANON_KEY}',
+        })
+        with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
+            rows = json.loads(resp.read().decode())
+        active = rows[0]['is_active'] if rows else True
+        # Cache so repeated calls and offline use work
+        config['subscription_active'] = active
+        save_config(config)
+        return active
+    except Exception:
+        return config.get('subscription_active', True)
+
+
 @app.route('/api/check-update')
 def api_check_update():
     """Check for app updates by fetching the remote manifest."""
@@ -2357,6 +2383,7 @@ def api_check_update():
     import ssl
     import certifi
     is_local = request.remote_addr in ('127.0.0.1', '::1')
+    subscription_active = _check_subscription_active()
     try:
         ctx = ssl.create_default_context(cafile=certifi.where())
         req = urllib.request.Request(_UPDATE_URL, headers={'User-Agent': f'Classify/{__version__}', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache'})
@@ -2374,11 +2401,12 @@ def api_check_update():
                 'update_available': True,
                 'current': __version__,
                 'latest': latest,
-                'download_url': url,
+                'download_url': url if subscription_active else None,
                 'notes': data.get('notes', ''),
                 'is_local': is_local,
+                'subscription_active': subscription_active,
             })
-        return jsonify({'update_available': False, 'current': __version__, 'is_local': is_local})
+        return jsonify({'update_available': False, 'current': __version__, 'is_local': is_local, 'subscription_active': subscription_active})
     except Exception:
         return jsonify({'update_available': False, 'current': __version__})
 

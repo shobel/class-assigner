@@ -287,9 +287,28 @@ async function checkForUpdate() {
       const banner = document.getElementById('update-banner');
       const msg = document.getElementById('update-msg');
       const link = document.getElementById('update-link');
-      msg.textContent = `Classify ${data.latest} is available (you have ${data.current}).${data.notes ? ' ' + data.notes : ''}`;
-      link.href = data.download_url || '#';
-      if (!data.download_url) link.style.display = 'none';
+      if (data.subscription_active === false) {
+        msg.textContent = `Classify ${data.latest} is available — renew your subscription to update.`;
+        link.textContent = 'Renew →';
+        link.href = 'https://www.classifyapp.com/#contact';
+        link.style.display = '';
+      } else {
+        msg.textContent = `Classify ${data.latest} is available (you have ${data.current}).${data.notes ? ' ' + data.notes : ''}`;
+        if (data.download_url) {
+          link.style.display = '';
+          link.onclick = async (e) => {
+            e.preventDefault();
+            try {
+              const fresh = await fetch('/api/check-update').then(r => r.json());
+              window.location.href = fresh.download_url || data.download_url;
+            } catch {
+              window.location.href = data.download_url;
+            }
+          };
+        } else {
+          link.style.display = 'none';
+        }
+      }
       banner.style.display = '';
     }
   } catch (e) {
