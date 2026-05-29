@@ -28,7 +28,7 @@ from werkzeug.security import generate_password_hash as _gen_hash
 def generate_password_hash(password):
     return _gen_hash(password, method='pbkdf2:sha256')
 
-__version__ = '1.1.7'
+__version__ = '1.1.8'
 _UPDATE_URL = 'https://shobel.github.io/classify-website/releases/latest.json'
 _SUPABASE_URL = 'https://vvswzymqizfninwuoumw.supabase.co'
 _SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2c3d6eW1xaXpmbmlud3VvdW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzODg5MTcsImV4cCI6MjA5Mzk2NDkxN30.JuXEoKfKw5VNQHSMweVryNgj0qo19DscnZhK6bLy-Ps'
@@ -2343,7 +2343,9 @@ def api_server_info():
     """Return local network URL so admins can share it with teachers."""
     ip = get_local_ip()
     port = request.host.split(':')[1] if ':' in request.host else '80'
-    return jsonify({'ip': ip, 'port': port, 'url': f'http://{ip}:{port}'})
+    hostname = socket.gethostname().removesuffix('.local')
+    local_url = f'http://{hostname}.local:{port}'
+    return jsonify({'ip': ip, 'port': port, 'url': f'http://{ip}:{port}', 'local_url': local_url})
 
 
 @app.route('/api/check-update')
