@@ -2,9 +2,19 @@
 // Handles lock acquisition, heartbeat, and polling for external changes
 
 // Session identity
+function _generateUUID() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  // Fallback for non-secure HTTP contexts (LAN access)
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
 let sessionId = localStorage.getItem('classify_session_id');
 if (!sessionId) {
-  sessionId = crypto.randomUUID();
+  sessionId = _generateUUID();
   localStorage.setItem('classify_session_id', sessionId);
 }
 
