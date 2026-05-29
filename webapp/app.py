@@ -28,7 +28,7 @@ from werkzeug.security import generate_password_hash as _gen_hash
 def generate_password_hash(password):
     return _gen_hash(password, method='pbkdf2:sha256')
 
-__version__ = '1.1.9'
+__version__ = '1.1.10'
 _UPDATE_URL = 'https://shobel.github.io/classify-website/releases/latest.json'
 _SUPABASE_URL = 'https://vvswzymqizfninwuoumw.supabase.co'
 _SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2c3d6eW1xaXpmbmlud3VvdW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzODg5MTcsImV4cCI6MjA5Mzk2NDkxN30.JuXEoKfKw5VNQHSMweVryNgj0qo19DscnZhK6bLy-Ps'
@@ -1464,6 +1464,8 @@ def api_create_school_year():
     config = load_config()
     config['active_school_year'] = year
     config['available_school_years'] = list_school_years()
+    if data.get('max_grade'):
+        config['max_grade'] = data['max_grade']
     save_config(config)
     return jsonify({'status': 'success', 'year': year})
 
@@ -2354,6 +2356,7 @@ def api_check_update():
     import urllib.request
     import ssl
     import certifi
+    is_local = request.remote_addr in ('127.0.0.1', '::1')
     try:
         ctx = ssl.create_default_context(cafile=certifi.where())
         req = urllib.request.Request(_UPDATE_URL, headers={'User-Agent': f'Classify/{__version__}', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache'})
@@ -2373,8 +2376,9 @@ def api_check_update():
                 'latest': latest,
                 'download_url': url,
                 'notes': data.get('notes', ''),
+                'is_local': is_local,
             })
-        return jsonify({'update_available': False, 'current': __version__})
+        return jsonify({'update_available': False, 'current': __version__, 'is_local': is_local})
     except Exception:
         return jsonify({'update_available': False, 'current': __version__})
 

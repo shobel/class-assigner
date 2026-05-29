@@ -286,6 +286,7 @@ function showPreview(roster, totalStudents) {
 async function confirmImport() {
   const yearInput = document.getElementById('onboarding-year').value.trim();
   if (!yearInput) { showError('Please enter a school year'); return; }
+  const maxGrade = document.getElementById('onboarding-max-grade')?.value || '8th Grade';
 
   const btn = document.getElementById('confirmButton');
   btn.disabled = true;
@@ -295,7 +296,7 @@ async function confirmImport() {
     const res = await fetch('/api/school-years/create', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ year: yearInput })
+      body: JSON.stringify({ year: yearInput, max_grade: maxGrade })
     });
 
     if (res.ok) {

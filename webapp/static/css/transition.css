@@ -142,7 +142,8 @@
   border-bottom: 1px solid var(--line-soft);
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: baseline;
+  gap: 10px;
 }
 
 .transition-grade-header h3 {

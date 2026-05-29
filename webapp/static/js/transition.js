@@ -456,68 +456,118 @@ async function confirmTransition() {
 }
 
 function showTransitionAddStudent(gradeName) {
+  // Build local state — mirrors the student object shape
+  const studentData = {
+    gender: 'b', behavior: 'neutral', independence: 'neutral',
+    iep: false, '504': false, esl: false, gate: false,
+    math: 'm', reading: 'm', friends: '', incompatible: '', notes: '',
+  };
+
+  const customProps = (window.config?.properties || []).filter(p => p.custom && p.enabled !== false);
+
+  // Build prop-rows for each built-in field
+  const builtinRows = [
+    { label: 'Gender',       key: 'gender',       opts: [{v:'g',l:'Girl'},{v:'b',l:'Boy'}] },
+    { label: 'Behavior',     key: 'behavior',      opts: [{v:'cooperative',l:'Cooperative'},{v:'neutral',l:'Neutral'},{v:'disruptive',l:'Disruptive'}] },
+    { label: 'Independence', key: 'independence',  opts: [{v:'high',l:'High'},{v:'neutral',l:'Neutral'},{v:'low',l:'Low'}] },
+    { label: 'IEP',          key: 'iep',           opts: [{v:'false',l:'No'},{v:'true',l:'Yes'}] },
+    { label: '504 Plan',     key: '504',           opts: [{v:'false',l:'No'},{v:'true',l:'Yes'}] },
+    { label: 'ESL',          key: 'esl',           opts: [{v:'false',l:'No'},{v:'true',l:'Yes'}] },
+    { label: 'GATE',         key: 'gate',          opts: [{v:'false',l:'No'},{v:'true',l:'Yes'}] },
+    { label: 'Math level',   key: 'math',          opts: [{v:'l',l:'Low'},{v:'m',l:'Med'},{v:'h',l:'High'}] },
+    { label: 'Reading level',key: 'reading',       opts: [{v:'l',l:'Low'},{v:'m',l:'Med'},{v:'h',l:'High'}] },
+  ].map(({label, key, opts}) => {
+    const def = String(studentData[key]);
+    return `<div class="prop-row" data-key="${key}">
+      <span class="k">${label}</span>
+      <div class="segmented">
+        ${opts.map(o => `<button class="seg${o.v === def ? ' active' : ''}" data-value="${o.v}">${o.l}</button>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
+  const customRows = customProps.map(prop => {
+    const opts = prop.type === 'boolean'
+      ? [{v:'false',l:'No'},{v:'true',l:'Yes'}]
+      : (prop.values || []).map(v => ({v, l:v}));
+    studentData[prop.name] = prop.type === 'boolean' ? false : (prop.values?.[0] ?? '');
+    const def = String(studentData[prop.name]);
+    return `<div class="prop-row" data-key="${prop.name}">
+      <span class="k">${prop.display_name}</span>
+      <div class="segmented">
+        ${opts.map(o => `<button class="seg${o.v === def ? ' active' : ''}" data-value="${o.v}">${o.l}</button>`).join('')}
+      </div>
+    </div>`;
+  }).join('');
+
   const overlay = document.createElement('div');
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:2000;display:flex;align-items:center;justify-content:center;';
 
   const card = document.createElement('div');
-  card.style.cssText = 'background:var(--bg);border:1px solid var(--line);border-radius:var(--rad-lg);padding:24px;width:300px;box-shadow:0 4px 24px rgba(0,0,0,0.12);';
+  card.style.cssText = 'background:var(--bg);border:1px solid var(--line);border-radius:var(--rad-lg);width:460px;max-width:calc(100vw - 32px);max-height:calc(100vh - 64px);display:flex;flex-direction:column;box-shadow:0 4px 24px rgba(0,0,0,0.12);';
 
   card.innerHTML = `
-    <div style="font-weight:600;font-size:14px;margin-bottom:16px;">Add student to ${gradeName}</div>
-    <div style="margin-bottom:12px;">
-      <label style="font-size:12px;color:var(--ink-3);display:block;margin-bottom:4px;">Name</label>
-      <input id="trans-add-name" type="text" placeholder="Full name"
-        style="width:100%;box-sizing:border-box;padding:7px 10px;border:1px solid var(--line);border-radius:var(--rad);font-size:13px;font-family:inherit;background:var(--bg);color:var(--ink);outline:none;">
+    <div style="padding:16px 20px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+      <span style="font-weight:600;font-size:14px;">Add student to ${gradeName}</span>
+      <button id="trans-add-cancel" style="background:none;border:none;font-size:18px;cursor:pointer;color:var(--ink-3);line-height:1;">✕</button>
     </div>
-    <div style="margin-bottom:16px;">
-      <label style="font-size:12px;color:var(--ink-3);display:block;margin-bottom:6px;">Gender</label>
-      <div style="display:flex;gap:6px;">
-        <button id="trans-gender-b" style="flex:1;padding:6px;border:1px solid var(--line);border-radius:var(--rad);font-size:12px;font-family:inherit;background:var(--bg);cursor:pointer;">Boy</button>
-        <button id="trans-gender-g" style="flex:1;padding:6px;border:1px solid var(--line);border-radius:var(--rad);font-size:12px;font-family:inherit;background:var(--bg);cursor:pointer;">Girl</button>
+    <div style="overflow-y:auto;padding:20px;flex:1;">
+      <div style="margin-bottom:16px;">
+        <label style="font-size:12px;font-weight:600;color:var(--ink-3);display:block;margin-bottom:4px;">Name</label>
+        <input id="trans-add-name" type="text" placeholder="Full name"
+          style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:var(--rad);font-size:13px;font-family:inherit;background:var(--bg);color:var(--ink);outline:none;">
       </div>
+      <div style="font-size:12px;font-weight:600;color:var(--ink-3);text-transform:uppercase;letter-spacing:0.05em;margin-bottom:10px;">Properties</div>
+      <div class="detail-section" style="border:1px solid var(--line);border-radius:var(--rad);overflow:hidden;margin-bottom:16px;">
+        ${builtinRows}
+        ${customRows}
+      </div>
+      ${customProps.length === 0 ? '' : ''}
+      <div>
+        <label style="font-size:12px;font-weight:600;color:var(--ink-3);display:block;margin-bottom:4px;">Notes</label>
+        <textarea id="trans-add-notes" rows="2" placeholder="Optional notes about this student…"
+          style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:var(--rad);font-size:13px;font-family:inherit;background:var(--bg);color:var(--ink);resize:vertical;outline:none;"></textarea>
+      </div>
+      <div id="trans-add-err" style="font-size:12px;color:var(--rose);margin-top:8px;display:none;"></div>
     </div>
-    <div id="trans-add-err" style="font-size:12px;color:var(--rose);margin-bottom:8px;display:none;"></div>
-    <div style="display:flex;gap:8px;">
-      <button id="trans-add-cancel" style="flex:1;padding:8px;border:1px solid var(--line);border-radius:var(--rad);font-size:13px;font-family:inherit;background:var(--bg);cursor:pointer;">Cancel</button>
-      <button id="trans-add-confirm" style="flex:1;padding:8px;border:none;border-radius:var(--rad);font-size:13px;font-family:inherit;background:var(--terra);color:#fff;font-weight:500;cursor:pointer;">Add student</button>
+    <div style="padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:8px;flex-shrink:0;">
+      <button id="trans-add-confirm" style="flex:1;padding:9px;border:none;border-radius:var(--rad);font-size:13px;font-family:inherit;background:var(--terra);color:#fff;font-weight:500;cursor:pointer;">Add student</button>
     </div>
   `;
 
   overlay.appendChild(card);
   document.body.appendChild(overlay);
 
+  // Segmented button interaction — updates studentData
+  card.querySelectorAll('.segmented').forEach(group => {
+    const key = group.closest('[data-key]').dataset.key;
+    group.addEventListener('click', e => {
+      const btn = e.target.closest('.seg');
+      if (!btn) return;
+      group.querySelectorAll('.seg').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const raw = btn.dataset.value;
+      studentData[key] = raw === 'true' ? true : raw === 'false' ? false : raw;
+    });
+  });
+
   const nameInput = card.querySelector('#trans-add-name');
   const errEl = card.querySelector('#trans-add-err');
-  const genderB = card.querySelector('#trans-gender-b');
-  const genderG = card.querySelector('#trans-gender-g');
-  let selectedGender = 'b';
-
-  const selectGender = (g) => {
-    selectedGender = g;
-    genderB.style.background = g === 'b' ? 'var(--terra-soft)' : 'var(--bg)';
-    genderB.style.borderColor = g === 'b' ? 'var(--terra)' : 'var(--line)';
-    genderG.style.background = g === 'g' ? 'var(--terra-soft)' : 'var(--bg)';
-    genderG.style.borderColor = g === 'g' ? 'var(--terra)' : 'var(--line)';
-  };
-  selectGender('b');
-
-  genderB.addEventListener('click', () => selectGender('b'));
-  genderG.addEventListener('click', () => selectGender('g'));
   nameInput.addEventListener('input', () => { errEl.style.display = 'none'; });
 
   const close = () => overlay.remove();
 
   const confirm = () => {
     const name = nameInput.value.trim();
-    if (!name) { errEl.textContent = 'Please enter a name.'; errEl.style.display = 'block'; return; }
+    if (!name) { errEl.textContent = 'Please enter a name.'; errEl.style.display = 'block'; nameInput.focus(); return; }
     const conflict = (transitionData.grades[gradeName] || []).some(s => !s.removed && s.name === name);
     if (conflict) { errEl.textContent = `${gradeName} already has a student named "${name}".`; errEl.style.display = 'block'; return; }
     transitionData.grades[gradeName].push({
-      name, gender: selectedGender,
-      behavior: 'neutral', independence: 'neutral',
-      iep: false, '504': false, esl: false, gate: false,
-      math: 'm', reading: 'm', friends: '', incompatible: '',
-      removed: false, isNew: true
+      ...studentData,
+      name,
+      notes: card.querySelector('#trans-add-notes').value.trim(),
+      friends: '', incompatible: '',
+      removed: false, isNew: true,
     });
     close();
     _refreshTransitionGrade(gradeName);
@@ -525,10 +575,8 @@ function showTransitionAddStudent(gradeName) {
 
   card.querySelector('#trans-add-confirm').addEventListener('click', confirm);
   card.querySelector('#trans-add-cancel').addEventListener('click', close);
-  nameInput.addEventListener('keydown', e => {
-    if (e.key === 'Enter') confirm();
-    if (e.key === 'Escape') close();
-  });
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  nameInput.addEventListener('keydown', e => { if (e.key === 'Escape') close(); });
   nameInput.focus();
 }
 

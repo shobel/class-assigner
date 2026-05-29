@@ -272,7 +272,7 @@ async function startApp() {
     }
   }
 
-  // Check for updates on load and every 30 minutes (admins only)
+  // Check for updates on load and every 30 minutes (host machine admins only)
   if (window.classifyIsAdmin) {
     checkForUpdate();
     setInterval(checkForUpdate, 30 * 60 * 1000);
@@ -283,7 +283,7 @@ async function checkForUpdate() {
   try {
     const res = await fetch('/api/check-update');
     const data = await res.json();
-    if (data.update_available) {
+    if (data.update_available && data.is_local) {
       const banner = document.getElementById('update-banner');
       const msg = document.getElementById('update-msg');
       const link = document.getElementById('update-link');
@@ -1680,7 +1680,7 @@ function renderSchoolConfigScreen() {
 
         <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--line-soft);display:flex;align-items:center;justify-content:space-between;">
           <span style="font-size:12px;color:var(--ink-4);">Classify v${window.classifyVersion || '—'}</span>
-          <button class="btn sm ghost" onclick="checkForUpdate().then(() => { const b = document.getElementById('update-banner'); if (b && b.style.display === 'none') showNotice('You\'re on the latest version.', 'success'); })">Check for updates</button>
+          <button class="btn sm ghost" onclick="checkForUpdate().then(() => { const b = document.getElementById('update-banner'); if (b && b.style.display === 'none') showNotice('You\\'re on the latest version.', 'success'); })">Check for updates</button>
         </div>
       </div>
     </div>
@@ -5869,7 +5869,7 @@ function showStudentDetail(name) {
       <div class="detail-section">
         <h5 style="margin-bottom:6px;">Notes</h5>
         <textarea id="student-notes-area"
-          placeholder="Private notes about this student (carried to next year)…"
+          placeholder="Notes about this student (carried to next year)…"
           style="width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line);border-radius:var(--rad);font-size:13px;font-family:inherit;background:var(--bg-2);color:var(--ink);outline:none;resize:vertical;min-height:72px;line-height:1.4;${!window.classifyIsAdmin ? 'opacity:0.7;' : ''}"
           ${!window.classifyIsAdmin ? 'readonly' : ''}
         >${(student.notes || '').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</textarea>
