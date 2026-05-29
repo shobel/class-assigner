@@ -102,6 +102,11 @@ async function loadGradeCustomProperties(gradeId) {
 
 // Switch school year
 async function switchSchoolYear(year) {
+  const activeYear = config.active_school_year || config.school_year;
+  if (year === activeYear) {
+    showScreen('year-overview');
+    return;
+  }
   await fetch(`/api/school-years/${year}`, { method: "POST" });
   await loadConfig();
   await loadGrades();
@@ -874,6 +879,7 @@ async function showScreen(screen) {
     students: "Roster",
     results: "Class placements",
     "grade-settings": "Settings",
+    "year-overview": "Year overview",
   };
   document.getElementById("crumb-screen").textContent =
     screenNames[screen] || screen;
@@ -898,6 +904,8 @@ async function showScreen(screen) {
     content = await renderHistoryScreen();
   } else if (screen === "users") {
     content = await renderUsersScreen();
+  } else if (screen === "year-overview") {
+    content = renderYearOverviewScreen();
   }
 
   // Update content but preserve detail panel
@@ -922,6 +930,99 @@ async function showScreen(screen) {
     requestAnimationFrame(applyAssignmentFilters);
   }
 }
+
+// Year Overview Screen
+function renderYearOverviewScreen() {
+  const year = config.active_school_year || config.school_year;
+  const hasAssignable = grades.some(g => g.status !== 'empty');
+
+  const cards = grades.map(g => {
+    let statusBadge = '';
+    let statusClass = '';
+    if (g.status === 'assigned') {
+      statusBadge = `<span class="yo-badge assigned">${g.classes} class${g.classes !== 1 ? 'es' : ''}</span>`;
+      statusClass = 'assigned';
+    } else if (g.status === 'imported') {
+      statusBadge = `<span class="yo-badge pending">Not assigned</span>`;
+      statusClass = 'pending';
+    } else {
+      statusBadge = `<span class="yo-badge empty">Empty</span>`;
+      statusClass = 'empty';
+    }
+
+    return `
+      <div class="yo-card ${statusClass}" id="yo-card-${g.id}" onclick="selectGrade('${g.id}')">
+        <div class="yo-card-header">
+          <span class="yo-grade-name">${g.name}</span>
+          ${statusBadge}
+        </div>
+        <div class="yo-card-meta">${g.students} student${g.students !== 1 ? 's' : ''}</div>
+        ${g.status !== 'empty' ? `<button class="btn sm ghost yo-run-btn" id="yo-run-${g.id}"
+          onclick="event.stopPropagation(); runAssignmentForGrade('${g.id}')">Run</button>` : ''}
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="yo-header">
+      <h1>${year}</h1>
+      ${hasAssignable ? `<button class="btn primary" onclick="runAllAssignments()">Assign all grades</button>` : ''}
+    </div>
+    <div class="yo-grid">
+      ${cards || '<p style="color:var(--ink-3);padding:20px">No grades yet.</p>'}
+    </div>
+  `;
+}
+
+async function runAssignmentForGrade(gradeId) {
+  const card = document.getElementById(`yo-card-${gradeId}`);
+  const btn = document.getElementById(`yo-run-${gradeId}`);
+  if (btn) { btn.disabled = true; btn.textContent = 'Running…'; }
+
+  try {
+    const res = await fetch(`/api/assign/${gradeId}`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    const result = await res.json();
+    if (res.ok && result.status === 'success') {
+      await loadGrades();
+      // Update just this card without full re-render
+      const g = grades.find(g => g.id === gradeId);
+      if (card && g) {
+        card.className = `yo-card assigned`;
+        card.querySelector('.yo-card-header').innerHTML = `
+          <span class="yo-grade-name">${g.name}</span>
+          <span class="yo-badge assigned">${result.num_classes} class${result.num_classes !== 1 ? 'es' : ''}</span>
+        `;
+        if (btn) { btn.disabled = false; btn.textContent = 'Re-run'; }
+      }
+    } else {
+      showNotice(result.error || 'Assignment failed', 'error');
+      if (btn) { btn.disabled = false; btn.textContent = 'Run'; }
+    }
+  } catch (e) {
+    showNotice('Assignment failed', 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Run'; }
+  }
+}
+
+async function runAllAssignments() {
+  const assignableGrades = grades.filter(g => g.status !== 'empty');
+  if (assignableGrades.length === 0) return;
+
+  const btn = document.querySelector('.yo-header .btn.primary');
+  if (btn) { btn.disabled = true; btn.textContent = `Assigning 0 / ${assignableGrades.length}…`; }
+
+  let done = 0;
+  for (const g of assignableGrades) {
+    if (btn) btn.textContent = `Assigning ${done + 1} / ${assignableGrades.length}…`;
+    await runAssignmentForGrade(g.id);
+    done++;
+  }
+
+  if (btn) { btn.disabled = false; btn.textContent = 'Assign all grades'; }
+  showNotice(`All ${done} grades assigned.`, 'success');
+}
+window.runAllAssignments = runAllAssignments;
+window.runAssignmentForGrade = runAssignmentForGrade;
 
 // Welcome Screen
 function renderWelcomeScreen() {
