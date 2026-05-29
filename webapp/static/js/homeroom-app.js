@@ -52,12 +52,6 @@ async function loadConfig() {
       (year) => `
     <div class="nav-item year-nav-item ${year === yearsData.active ? "year-active" : ""}" onclick="switchSchoolYear('${year}')">
       <span class="nav-label">${year}</span>
-      ${year === yearsData.current ? '<span class="nav-count" style="font-size: 9px; padding: 2px 5px;">current</span>' : ""}
-      <div class="year-nav-actions">
-        ${year !== yearsData.current ? `<button class="btn-tiny ghost" onclick="event.stopPropagation(); setCurrentYear('${year}')" title="Mark as current year" style="font-size: 9px;">set current</button>` : ""}
-        ${window.classifyIsAdmin ? `<button class="btn-tiny ghost" onclick="event.stopPropagation(); showImportModal('schoolYear')" title="Import students from CSV" style="font-size: 9px;">import</button>` : ''}
-        ${window.classifyIsAdmin ? `<button class="nav-clear" onclick="event.stopPropagation(); clearSchoolYear('${year}')" title="Clear all data"><span style="font-size: 9px; opacity: 0.7;">[dev]</span> ×</button>` : ''}
-      </div>
     </div>
   `,
     )
@@ -1325,7 +1319,10 @@ window.submitCreateUser = submitCreateUser;
 async function _getSetupUrl() {
   if (window.location.hostname === '127.0.0.1') {
     const info = await fetch('/api/server-info').then(r => r.json()).catch(() => null);
-    if (info && info.url) return `${info.url}/setup`;
+    if (info) {
+      const base = info.local_url || info.url;
+      return `${base}/setup`;
+    }
   }
   return `${window.location.origin}/setup`;
 }
@@ -1536,18 +1533,29 @@ window.submitFeedback = submitFeedback;
 
 async function populateServerUrl() {
   let url = window.location.origin;
+  let localUrl = null;
   try {
     const r = await fetch('/api/server-info');
-    if (r.ok) { const d = await r.json(); url = d.url; }
+    if (r.ok) { const d = await r.json(); url = d.url; localUrl = d.local_url || null; }
   } catch (_) {}
+  const primaryUrl = localUrl || url;
   const disp = document.getElementById('server-url-display');
   const copy = document.getElementById('server-url-copy');
   const mailto = document.getElementById('server-url-mailto');
+  const fallback = document.getElementById('server-url-fallback');
   if (!disp) return;
-  disp.textContent = url;
-  copy._url = url;
-  const mailtoBody = encodeURIComponent(`Hi,\n\nYou can access the class assignment tool at:\n${url}\n\nLog in with the credentials your admin set up for you.`);
-  mailto.href = `mailto:?subject=${encodeURIComponent('Your class assignment tool access link')}&body=${mailtoBody}`;
+  disp.textContent = primaryUrl;
+  copy._url = primaryUrl;
+  if (fallback) {
+    if (localUrl && localUrl !== url) {
+      fallback.textContent = `IP fallback: ${url}`;
+      fallback.style.display = '';
+    } else {
+      fallback.style.display = 'none';
+    }
+  }
+  const mailtoBody = encodeURIComponent(`Hi,\n\nYou can access Classify from any device on the school network at:\n${primaryUrl}\n\nLog in with the credentials your admin set up for you.`);
+  mailto.href = `mailto:?subject=${encodeURIComponent('Your Classify access link')}&body=${mailtoBody}`;
 }
 
 function copyServerUrl() {
@@ -1594,6 +1602,7 @@ function renderSchoolConfigScreen() {
               <span id="server-url-display" style="word-break:break-all;color:var(--ink-2);">Loading…</span>
               <button id="server-url-copy" onclick="copyServerUrl()" style="flex-shrink:0;padding:4px 10px;background:var(--terra);color:#fff;border:none;border-radius:var(--rad);font-size:12px;cursor:pointer;font-family:inherit;">Copy</button>
             </div>
+            <div id="server-url-fallback" style="font-size:11px;color:var(--ink-4);margin-bottom:8px;display:none;"></div>
             <a id="server-url-mailto" href="#" style="font-size:13px;color:var(--ink-3);text-decoration:none;">✉ Email teachers this link</a>
           </div>
         </div>
@@ -5049,8 +5058,11 @@ window._impSetNameOverride = function(grade, origName, idx, val) {
 
 let _impState = null;
 
-function showImportModal(mode) {
-  _impState = { step:1, mode: mode || 'grade', rawRows:[], columns:[], colMappings:{}, valMappings:{}, gradeMapping:{}, extraPrefs:{}, nameOverrides:{} };
+async function showImportModal(mode) {
+  const yearsRes = await fetch('/api/school-years').then(r => r.json()).catch(() => null);
+  const availableYears = yearsRes?.years || [config.active_school_year || config.school_year];
+  const targetYear = yearsRes?.active || config.active_school_year || config.school_year;
+  _impState = { step:1, mode: mode || 'grade', rawRows:[], columns:[], colMappings:{}, valMappings:{}, gradeMapping:{}, extraPrefs:{}, nameOverrides:{}, targetYear, availableYears };
   _impRender();
   document.getElementById('importModal').classList.add('open');
 }
@@ -5072,7 +5084,21 @@ function _impRender() {
 }
 
 function _impStep1HTML() {
-  return `
+  const s = _impState;
+  const yearSelector = s.mode === 'schoolYear' ? (() => {
+    if (s.availableYears?.length > 1) {
+      return `<div style="margin-bottom:20px;">
+        <label style="font-size:13px;font-weight:600;color:var(--ink-2);display:block;margin-bottom:6px;">Import into school year</label>
+        <select onchange="_impState.targetYear=this.value" style="width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:var(--rad);font:inherit;font-size:13px;background:var(--panel);">
+          ${s.availableYears.map(y => `<option value="${y}"${y===s.targetYear?' selected':''}>${y}</option>`).join('')}
+        </select>
+      </div>`;
+    }
+    return `<div style="margin-bottom:20px;padding:8px 12px;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--rad);font-size:13px;color:var(--ink-3);">
+      Importing into <strong style="color:var(--ink)">${s.targetYear}</strong>
+    </div>`;
+  })() : '';
+  return yearSelector + `
     <div id="imp-dropzone"
       style="border:2px dashed var(--line);border-radius:var(--rad-lg);padding:48px 24px;text-align:center;cursor:pointer;transition:border-color 0.15s;"
       onclick="document.getElementById('imp-file-input').click()"
@@ -5521,7 +5547,7 @@ async function _impConfirm() {
     res = await fetch('/api/school-years/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ grades: byGrade }),
+      body: JSON.stringify({ grades: byGrade, target_year: s.targetYear }),
     });
   } else {
     const students = _impBuildStudents(s);

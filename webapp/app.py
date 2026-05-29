@@ -28,7 +28,7 @@ from werkzeug.security import generate_password_hash as _gen_hash
 def generate_password_hash(password):
     return _gen_hash(password, method='pbkdf2:sha256')
 
-__version__ = '1.1.8'
+__version__ = '1.1.9'
 _UPDATE_URL = 'https://shobel.github.io/classify-website/releases/latest.json'
 _SUPABASE_URL = 'https://vvswzymqizfninwuoumw.supabase.co'
 _SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2c3d6eW1xaXpmbmlud3VvdW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzODg5MTcsImV4cCI6MjA5Mzk2NDkxN30.JuXEoKfKw5VNQHSMweVryNgj0qo19DscnZhK6bLy-Ps'
@@ -1367,7 +1367,7 @@ def api_school_year_import():
         return jsonify({'error': 'Missing grades data'}), 400
 
     config = load_config()
-    active_year = config.get('active_school_year', config['school_year'])
+    active_year = data.get('target_year') or config.get('active_school_year', config['school_year'])
 
     # Check for duplicate names within each grade
     for grade_name, students in grades_data.items():
@@ -2356,7 +2356,7 @@ def api_check_update():
     import certifi
     try:
         ctx = ssl.create_default_context(cafile=certifi.where())
-        req = urllib.request.Request(_UPDATE_URL, headers={'User-Agent': f'Classify/{__version__}'})
+        req = urllib.request.Request(_UPDATE_URL, headers={'User-Agent': f'Classify/{__version__}', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache'})
         with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
             data = json.loads(resp.read().decode())
         latest = data.get('version', __version__)
