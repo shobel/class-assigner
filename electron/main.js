@@ -194,13 +194,51 @@ function createWindow() {
 
 // ── Menu ──────────────────────────────────────────────────────────────────────
 
+async function uninstallClassify() {
+  const { response } = await dialog.showMessageBox(mainWindow, {
+    type: 'warning',
+    buttons: ['Cancel', 'Uninstall'],
+    defaultId: 0,
+    cancelId: 0,
+    title: 'Uninstall Classify',
+    message: 'This will permanently delete all Classify data.',
+    detail: 'All student rosters, class placements, school years, user accounts, and settings will be deleted from this computer. This cannot be undone.\n\nAfter uninstalling, drag Classify from your Applications folder to the Trash to finish removing it.',
+  });
+  if (response !== 1) return;
+
+  // Stop and remove launchd service
+  if (fs.existsSync(SERVICE_PLIST)) {
+    try { await launchctl('unload', SERVICE_PLIST); } catch {}
+    fs.rmSync(SERVICE_PLIST, { force: true });
+  }
+
+  // Remove data directories
+  const dataDir = path.join(os.homedir(), 'Library', 'Application Support', 'Classify');
+  const electronDir = path.join(os.homedir(), 'Library', 'Application Support', 'classify');
+  const logsDir = path.join(os.homedir(), 'Library', 'Logs', 'Classify');
+  for (const dir of [dataDir, electronDir, logsDir]) {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+
+  await dialog.showMessageBox({
+    type: 'info',
+    buttons: ['Quit'],
+    title: 'Classify uninstalled',
+    message: 'Classify has been uninstalled.',
+    detail: 'All data has been removed. Drag Classify from your Applications folder to the Trash to finish.',
+  });
+  app.quit();
+}
+
 function buildMenu() {
   const isMac = process.platform === 'darwin';
   const template = [
     ...(isMac ? [{ label: app.name, submenu: [
       { role: 'about' }, { type: 'separator' }, { role: 'services' },
       { type: 'separator' }, { role: 'hide' }, { role: 'hideOthers' },
-      { role: 'unhide' }, { type: 'separator' }, { role: 'quit' },
+      { role: 'unhide' }, { type: 'separator' },
+      { label: 'Uninstall Classify…', click: () => uninstallClassify() },
+      { type: 'separator' }, { role: 'quit' },
     ]}] : []),
     { label: 'Edit', submenu: [
       { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
