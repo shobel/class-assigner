@@ -28,7 +28,7 @@ from werkzeug.security import generate_password_hash as _gen_hash
 def generate_password_hash(password):
     return _gen_hash(password, method='pbkdf2:sha256')
 
-__version__ = '1.1.13'
+__version__ = '1.1.14'
 _UPDATE_URL = 'https://shobel.github.io/classify-website/releases/latest.json'
 _SUPABASE_URL = 'https://vvswzymqizfninwuoumw.supabase.co'
 _SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2c3d6eW1xaXpmbmlud3VvdW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzODg5MTcsImV4cCI6MjA5Mzk2NDkxN30.JuXEoKfKw5VNQHSMweVryNgj0qo19DscnZhK6bLy-Ps'
@@ -2234,9 +2234,9 @@ def api_assign(grade_id):
         if not temp_output.exists():
             raise Exception(f"Solver did not produce output for {num_classes} classes. Check server logs for details.")
 
-        # Read results — replace NaN with None so JSON serializes as null not NaN
+        # Read results — use pandas JSON serializer to correctly handle NaN → null
         results_df = pd.read_csv(temp_output)
-        assignments = results_df.where(pd.notnull(results_df), None).to_dict('records')
+        assignments = json.loads(results_df.to_json(orient='records'))
 
         combinations = format_combinations(len(students), num_classes)
 

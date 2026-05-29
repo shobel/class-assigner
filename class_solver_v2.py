@@ -482,10 +482,12 @@ def solve_classes(input_path="students_sample_v2.csv", output_path="class_assign
     total_with_friend = sum(a.get('has_friend_in_class', 0) for a in assignments)
     friend_satisfaction = total_with_friend / len(assignments) if assignments else 0
 
+    import math
+    obj = solver.ObjectiveValue()
     return {
         'status': status_name,  # 'OPTIMAL' or 'FEASIBLE'
         'elapsed': round(elapsed, 2),
-        'objective': solver.ObjectiveValue(),
+        'objective': None if (math.isnan(obj) or math.isinf(obj)) else obj,
         'friend_satisfaction': round(friend_satisfaction, 3),
         'teacher_assignments': assigned_teachers_result,  # class-indexed list, empty if not used
     }
