@@ -116,7 +116,7 @@ async function showTransitionWizard() {
 
 function _transitionStudentListHTML(gradeName, students) {
   if (students.length === 0) {
-    return `<div class="empty-grade">No students yet${gradeName === 'Kindergarten' ? '. Import CSV' : ''}.</div>`;
+    return `<div class="empty-grade">No students yet.</div>`;
   }
   const searchTerm = (window.transitionSearchTerm || '').toLowerCase();
   return students.map((s, idx) => {
@@ -211,13 +211,17 @@ function renderTransitionGrades() {
     const activeStudents = students.filter(s => !s.removed);
     const esc = gradeName.replace(/'/g, "\\'");
 
+    const isLowestGrade = gradeName === gradeOrder[0];
     return `
       <div class="transition-grade">
         <div class="transition-grade-header">
           <h3>${gradeName}</h3>
           <span class="count">${activeStudents.length} student${activeStudents.length !== 1 ? 's' : ''}</span>
-          <button class="btn ghost sm" onclick="showTransitionAddStudent('${esc}')"
-            style="padding:2px 8px;font-size:15px;line-height:1;margin-left:auto;flex-shrink:0;" title="Add student">+</button>
+          <div style="display:flex;gap:6px;margin-left:auto;flex-shrink:0;">
+            ${isLowestGrade ? `<button class="btn ghost sm" onclick="showTransitionImportCSV('${esc}')" style="font-size:12px;">Import CSV</button>` : ''}
+            <button class="btn ghost sm" onclick="showTransitionAddStudent('${esc}')"
+              style="padding:2px 8px;font-size:15px;line-height:1;" title="Add student">+</button>
+          </div>
         </div>
         <div
           class="transition-students"
@@ -357,45 +361,6 @@ function restoreStudent(gradeName, idx) {
   _refreshTransitionGrade(gradeName);
 }
 
-async function importKindergartenCSV(event, gradeName) {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  const text = await file.text();
-  const lines = text.split('\n').filter(l => l.trim());
-
-  // Parse CSV (simple parser - assumes first row is header)
-  const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-  const nameIdx = headers.findIndex(h => h.includes('name') || h.includes('student'));
-  const genderIdx = headers.findIndex(h => h.includes('gender') || h.includes('sex'));
-
-  for (let i = 1; i < lines.length; i++) {
-    const cells = lines[i].split(',').map(c => c.trim());
-    if (cells.length < 2) continue;
-
-    const name = cells[nameIdx] || cells[0];
-    const gender = cells[genderIdx] || '';
-
-    transitionData.grades[gradeName].push({
-      name: name,
-      gender: gender.toLowerCase().startsWith('f') || gender.toLowerCase().startsWith('g') ? 'g' : 'b',
-      behavior: 'neutral',
-      independence: 'neutral',
-      iep: false,
-      '504': false,
-      esl: false,
-      gate: false,
-      math: 'm',
-      reading: 'm',
-      friends: '',
-      incompatible: '',
-      removed: false,
-      isNew: true
-    });
-  }
-
-  _refreshTransitionGrade(gradeName);
-}
 
 function updateStudentCount() {
   let total = 0;
@@ -580,14 +545,48 @@ function showTransitionAddStudent(gradeName) {
   nameInput.focus();
 }
 
+function showTransitionImportCSV(gradeName) {
+  showImportModal('transition-grade', {
+    transitionGradeName: gradeName,
+    transitionCallback: (students) => {
+      if (!transitionData.grades[gradeName]) transitionData.grades[gradeName] = [];
+      const existingNames = new Set(transitionData.grades[gradeName].filter(s => !s.removed).map(s => s.name));
+      const newStudents = students.filter(s => !existingNames.has(s.name));
+      transitionData.grades[gradeName].push(...newStudents);
+      _refreshTransitionGrade(gradeName);
+    },
+  });
+}
+
+async function startFreshYearTransition() {
+  const ok = await showConfirm(
+    `Start a fresh ${transitionData.nextYear} roster?<br><br>Existing student data won't be carried over — you'll import your full new roster from your school's system.`,
+    { confirmLabel: 'Start fresh' }
+  );
+  if (!ok) return;
+
+  const res = await fetch('/api/school-years/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ year: transitionData.nextYear }),
+  });
+  if (!res.ok) { showNotice('Failed to create school year.', 'error'); return; }
+
+  closeTransitionWizard();
+  await loadConfig();
+  await loadGrades();
+  showImportModal('schoolYear');
+}
+
 window.showTransitionWizard = showTransitionWizard;
 window.closeTransitionWizard = closeTransitionWizard;
 window.confirmTransition = confirmTransition;
 window.showTransitionAddStudent = showTransitionAddStudent;
+window.showTransitionImportCSV = showTransitionImportCSV;
+window.startFreshYearTransition = startFreshYearTransition;
 window.moveStudent = moveStudent;
 window.removeStudent = removeStudent;
 window.restoreStudent = restoreStudent;
-window.importKindergartenCSV = importKindergartenCSV;
 window.searchTransitionStudents = searchTransitionStudents;
 window.clearTransitionSearch = clearTransitionSearch;
 window.handleTransitionDragStart = handleTransitionDragStart;

@@ -5058,11 +5058,16 @@ window._impSetNameOverride = function(grade, origName, idx, val) {
 
 let _impState = null;
 
-async function showImportModal(mode) {
+async function showImportModal(mode, opts = {}) {
   const yearsRes = await fetch('/api/school-years').then(r => r.json()).catch(() => null);
   const availableYears = yearsRes?.years || [config.active_school_year || config.school_year];
   const targetYear = yearsRes?.active || config.active_school_year || config.school_year;
-  _impState = { step:1, mode: mode || 'grade', rawRows:[], columns:[], colMappings:{}, valMappings:{}, gradeMapping:{}, extraPrefs:{}, nameOverrides:{}, targetYear, availableYears };
+  _impState = {
+    step: 1, mode: mode || 'grade', rawRows:[], columns:[], colMappings:{}, valMappings:{},
+    gradeMapping:{}, extraPrefs:{}, nameOverrides:{}, targetYear, availableYears,
+    transitionGradeName: opts.transitionGradeName || null,
+    transitionCallback: opts.transitionCallback || null,
+  };
   _impRender();
   document.getElementById('importModal').classList.add('open');
 }
@@ -5085,7 +5090,10 @@ function _impRender() {
 
 function _impStep1HTML() {
   const s = _impState;
-  const yearSelector = s.mode === 'schoolYear' ? (() => {
+  const gradeLabel = s.mode === 'transition-grade' ? `<div style="margin-bottom:20px;padding:8px 12px;background:var(--bg-2);border:1px solid var(--line);border-radius:var(--rad);font-size:13px;color:var(--ink-3);">
+    Importing into <strong style="color:var(--ink)">${s.transitionGradeName}</strong> for next year
+  </div>` : '';
+  const yearSelector = (s.mode === 'schoolYear') ? (() => {
     if (s.availableYears?.length > 1) {
       return `<div style="margin-bottom:20px;">
         <label style="font-size:13px;font-weight:600;color:var(--ink-2);display:block;margin-bottom:6px;">Import into school year</label>
@@ -5098,7 +5106,7 @@ function _impStep1HTML() {
       Importing into <strong style="color:var(--ink)">${s.targetYear}</strong>
     </div>`;
   })() : '';
-  return yearSelector + `
+  return gradeLabel + yearSelector + `
     <div id="imp-dropzone"
       style="border:2px dashed var(--line);border-radius:var(--rad-lg);padding:48px 24px;text-align:center;cursor:pointer;transition:border-color 0.15s;"
       onclick="document.getElementById('imp-file-input').click()"
@@ -5448,7 +5456,7 @@ function _impStep4HTML() {
         return `<td style="padding:7px 10px;font-size:12px;border-top:1px solid var(--line-soft);white-space:nowrap;max-width:140px;overflow:hidden;text-overflow:ellipsis;">${escAttr(disp)}</td>`;
       }).join('') + '</tr>';
     }).join('');
-    summary = `Importing <strong>${students.length} students</strong> into <strong>${escAttr(currentGrade?.name||'this grade')}</strong>${students.length>10?' — showing first 10':''}`;
+    summary = `Importing <strong>${students.length} students</strong> into <strong>${escAttr(s.transitionGradeName || currentGrade?.name||'this grade')}</strong>${students.length>10?' — showing first 10':''}`;
     tableHTML = `<table style="width:100%;border-collapse:collapse;white-space:nowrap;">
       <thead><tr>${thCells}</tr></thead>
       <tbody>${trRows}</tbody></table>`;
@@ -5469,7 +5477,7 @@ function _impStep4HTML() {
   return `
     <div style="font-size:13px;color:var(--ink-3);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;">
       <span>${summary}</span>
-      <span style="font-size:12px;color:var(--rose);">Replaces existing students &amp; assignments</span>
+      ${s.mode !== 'transition-grade' ? `<span style="font-size:12px;color:var(--rose);">Replaces existing students &amp; assignments</span>` : ''}
     </div>
     ${dupHTML}
     ${assignedClassNote}
@@ -5549,6 +5557,13 @@ async function _impConfirm() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ grades: byGrade, target_year: s.targetYear }),
     });
+  } else if (s.mode === 'transition-grade') {
+    const students = _impBuildStudents(s);
+    if (!students.length) { _impShowErr('No students to import.'); if (btn) { btn.disabled = false; btn.textContent = 'Import students'; } return; }
+    students.forEach(st => { st.removed = false; st.isNew = true; });
+    s.transitionCallback(students);
+    closeImportModal();
+    return;
   } else {
     const students = _impBuildStudents(s);
     if (!students.length) { _impShowErr('No students to import.'); if (btn) { btn.disabled = false; btn.textContent = `Import ${students.length} students`; } return; }
