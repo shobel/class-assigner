@@ -133,7 +133,7 @@ async function createNextYear() {
 // Clear school year data
 async function clearSchoolYear(year) {
   const ok = await showConfirm(
-    `Clear all data for ${year}?<br><br>This will delete all students, grades, and assignments for this school year. This cannot be undone.`,
+    `Clear all data for ${year}?<br><br>This will delete all students, grades, and placements for this school year. This cannot be undone.`,
     { confirmLabel: "Clear", destructive: true },
   );
   if (!ok) return;
@@ -486,7 +486,7 @@ async function removeGradeTeacher(name) {
   if (!currentGrade) return;
   const assignedToClass = (window.currentTeachers || []).includes(name);
   if (assignedToClass) {
-    showNotice(`${name} is assigned to a class — unassign them first`, "error");
+    showNotice(`${name} is placed in a class — remove their placement first`, "error");
     return;
   }
   const updated = (window.currentAvailableTeachers || []).filter(
@@ -859,7 +859,7 @@ async function showScreen(screen) {
     "users": "Users",
     import: "Import students",
     students: "Roster",
-    results: "Class assignments",
+    results: "Class placements",
     "grade-settings": "Settings",
   };
   document.getElementById("crumb-screen").textContent =
@@ -942,7 +942,7 @@ function renderWelcomeScreen() {
       </div>
       <h1>Three steps to <em>balanced</em> classes.</h1>
       <p class="lede">
-        Manual class assignment means balancing gender, behavior, special needs, education plans, math and reading levels — plus
+        Manual class placement means balancing gender, behavior, special needs, education plans, math and reading levels — plus
         keeping friends together and difficult pairs apart. What can take teachers hours to do, classify can solve in seconds.
       </p>
 
@@ -1172,7 +1172,7 @@ async function renderHistoryScreen() {
   }
 
   const TABS = [
-    { id: 'assignment', label: 'Assignment'    },
+    { id: 'assignment', label: 'Placement'    },
     { id: 'students',   label: 'Student data'  },
     { id: 'teachers',   label: 'Teacher data'  },
   ];
@@ -2429,7 +2429,7 @@ async function renderStudentsScreen() {
               <circle cx="12" cy="8" r="6"/>
               <path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>
             </svg>
-            Optimal assignment
+            Optimal placement
           </span>
         `
             : ""
@@ -6334,7 +6334,7 @@ function showReadOnlyModal(gradeName, heldBy) {
         <div style="font-size: 14px; line-height: 1.6; color: var(--ink-2); margin-bottom: 20px;">
           <strong>${heldBy}</strong> is currently editing ${gradeName}.
           <br><br>
-          You can view students and assignments in <strong>read-only mode</strong>, but you won't be able to make changes until they finish.
+          You can view students and placements in <strong>read-only mode</strong>, but you won't be able to make changes until they finish.
           <br><br>
           If they've closed their browser, you can try clicking <strong>"Request edit"</strong> in the top right.
         </div>
@@ -6885,7 +6885,7 @@ function confirmDeleteStudent(studentName) {
     (a) => a.name === studentName,
   );
   const warning = hasAssignment
-    ? "This student has been assigned to a class. Removing them will affect the current assignment."
+    ? "This student has been placed in a class. Removing them will affect the current placement."
     : "This will permanently remove the student from the roster.";
 
   const overlay = document.createElement("div");
@@ -7218,7 +7218,7 @@ async function importAllData(input) {
 
 function exportAssignmentCSV() {
   if (!window.currentAssignments || window.currentAssignments.length === 0) {
-    showNotice("No assignment to export. Run the assignment first.", "error");
+    showNotice("No placement to export. Run placement first.", "error");
     return;
   }
 
