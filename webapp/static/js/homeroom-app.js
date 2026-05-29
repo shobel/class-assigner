@@ -58,8 +58,10 @@ async function loadConfig() {
     .join("");
 
   // Update UI elements
-  document.getElementById("crumb-school").textContent =
-    yearsData.active || config.school_name || "School";
+  const crumbSchool = document.getElementById("crumb-school");
+  crumbSchool.textContent = yearsData.active || config.school_name || "School";
+  crumbSchool.style.cursor = "pointer";
+  crumbSchool.onclick = () => showScreen("year-overview");
   const brandSchoolName = document.getElementById("brand-school-name");
   if (brandSchoolName)
     brandSchoolName.textContent =
@@ -103,15 +105,25 @@ async function loadGradeCustomProperties(gradeId) {
 // Switch school year
 async function switchSchoolYear(year) {
   const activeYear = config.active_school_year || config.school_year;
-  if (year === activeYear) {
-    showScreen('year-overview');
+  const onGradeScreen = ['students', 'results', 'grade-settings'].includes(currentScreen);
+
+  if (year !== activeYear) {
+    await fetch(`/api/school-years/${year}`, { method: "POST" });
+    await loadConfig();
+    await loadGrades();
+  }
+
+  // On grade screens: only show overview when clicking the already-active year;
+  // clicking a different year just switches and stays on the grade screen.
+  if (onGradeScreen && year !== activeYear) {
+    if (grades.length === 0) showScreen('welcome');
+    else showScreen(currentScreen);
     return;
   }
-  await fetch(`/api/school-years/${year}`, { method: "POST" });
-  await loadConfig();
-  await loadGrades();
+
+  // On any non-grade screen (or clicking the active year): always go to overview.
   if (grades.length === 0) showScreen('welcome');
-  else showScreen(currentScreen);
+  else showScreen('year-overview');
 }
 
 // Mark a year as "current" (visual only)
@@ -216,13 +228,13 @@ function showRestoreOption() {
     <div style="font-size:13px;color:var(--ink-3);margin-bottom:24px">
       Are you transferring from another computer?
     </div>
-    <label class="btn" style="display:block;width:100%;box-sizing:border-box;text-align:center;cursor:pointer;margin-bottom:10px;background:var(--terra);color:#fff;border-color:var(--terra)">
-      Restore from backup
-      <input type="file" accept=".classify" style="display:none" onchange="handleActivationImport(this)">
-    </label>
-    <button class="btn ghost" style="width:100%" onclick="document.getElementById('activation-overlay').classList.add('hidden');startApp()">
+    <button class="btn" style="display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;margin-bottom:10px;background:var(--terra);color:#fff;border-color:var(--terra)" onclick="document.getElementById('activation-overlay').classList.add('hidden');startApp()">
       Start fresh
     </button>
+    <label style="display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;cursor:pointer;font-size:13px;color:var(--ink-3);padding:6px 0;gap:6px">
+      <input type="file" accept=".classify" style="display:none" onchange="handleActivationImport(this)">
+      Restoring from another computer? <span style="color:var(--terra);text-decoration:underline;text-underline-offset:2px">Restore from backup</span>
+    </label>
     <div id="restore-status" style="display:none;margin-top:12px;font-size:12px;text-align:center"></div>
   `;
 }
@@ -1417,10 +1429,18 @@ async function submitCreateUser() {
       </div>
     `;
     document.getElementById('inviteCodeBox').addEventListener('click', () => {
-      navigator.clipboard.writeText(d.invite_code).then(() => {
+      const done = () => {
         document.getElementById('copyConfirm').textContent = 'Copied!';
         setTimeout(() => { const el = document.getElementById('copyConfirm'); if (el) el.textContent = 'Click the code to copy'; }, 2000);
-      });
+      };
+      if (navigator.clipboard?.writeText) {
+        navigator.clipboard.writeText(d.invite_code).then(done);
+      } else {
+        const ta = document.createElement('textarea');
+        ta.value = d.invite_code; ta.style.position = 'fixed'; ta.style.opacity = '0';
+        document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta); done();
+      }
     });
   } else {
     errEl.textContent = d.error || 'Failed to create invite.';
@@ -1452,32 +1472,63 @@ function _inviteMailto(code, setupUrl) {
   return `mailto:?subject=${subject}&body=${body}`;
 }
 
+function showConfirmModal({ title, message, confirmLabel = 'Confirm', danger = false, onConfirm }) {
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:10000;';
+  modal.innerHTML = `
+    <div style="background:var(--bg);border-radius:var(--rad-lg);padding:28px;max-width:380px;width:90%;box-shadow:0 4px 24px rgba(0,0,0,0.15);">
+      <div style="font-size:15px;font-weight:600;margin-bottom:8px;">${title}</div>
+      <div style="font-size:13px;color:var(--ink-3);margin-bottom:20px;line-height:1.5;">${message}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn ghost" id="_confirmCancel">Cancel</button>
+        <button class="btn ${danger ? 'terra' : 'primary'}" id="_confirmOk">${confirmLabel}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  modal.querySelector('#_confirmCancel').onclick = () => modal.remove();
+  modal.querySelector('#_confirmOk').onclick = () => { modal.remove(); onConfirm(); };
+  modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+}
+
 async function deleteUser(id, username) {
-  if (!confirm(`Remove ${username}? They will no longer be able to sign in.`)) return;
-  const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
-  if (res.ok) {
-    showScreen('users');
-  } else {
-    const d = await res.json();
-    showNotice(d.error || 'Failed to remove user.', 'error');
-  }
+  showConfirmModal({
+    title: 'Remove user',
+    message: `Remove <strong>${username}</strong>? They will no longer be able to sign in.`,
+    confirmLabel: 'Remove',
+    danger: true,
+    onConfirm: async () => {
+      const res = await fetch(`/api/users/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        showScreen('users');
+      } else {
+        const d = await res.json();
+        showNotice(d.error || 'Failed to remove user.', 'error');
+      }
+    }
+  });
 }
 window.deleteUser = deleteUser;
 
 async function toggleUserRole(id, makeAdmin) {
   const label = makeAdmin ? 'admin' : 'teacher';
-  if (!confirm(`Change this user's role to ${label}?`)) return;
-  const res = await fetch(`/api/users/${id}/role`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ is_admin: makeAdmin }),
+  showConfirmModal({
+    title: 'Change role',
+    message: `Change this user's role to <strong>${label}</strong>?`,
+    confirmLabel: 'Change role',
+    onConfirm: async () => {
+      const res = await fetch(`/api/users/${id}/role`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_admin: makeAdmin }),
+      });
+      if (res.ok) {
+        showScreen('users');
+      } else {
+        const d = await res.json();
+        showNotice(d.error || 'Failed to change role.', 'error');
+      }
+    }
   });
-  if (res.ok) {
-    showScreen('users');
-  } else {
-    const d = await res.json();
-    showNotice(d.error || 'Failed to change role.', 'error');
-  }
 }
 window.toggleUserRole = toggleUserRole;
 
@@ -1507,10 +1558,18 @@ async function regenerateInvite(userId, username) {
   document.body.appendChild(modal);
   modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
   document.getElementById('reInviteCodeBox').addEventListener('click', () => {
-    navigator.clipboard.writeText(d.invite_code).then(() => {
+    const done = () => {
       document.getElementById('reCopyConfirm').textContent = 'Copied!';
       setTimeout(() => { const el = document.getElementById('reCopyConfirm'); if (el) el.textContent = 'Click the code to copy'; }, 2000);
-    });
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(d.invite_code).then(done);
+    } else {
+      const ta = document.createElement('textarea');
+      ta.value = d.invite_code; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      document.execCommand('copy'); document.body.removeChild(ta); done();
+    }
   });
 }
 window.regenerateInvite = regenerateInvite;
@@ -1651,23 +1710,23 @@ async function populateServerUrl() {
     const r = await fetch('/api/server-info');
     if (r.ok) { const d = await r.json(); url = d.url; localUrl = d.local_url || null; }
   } catch (_) {}
-  const primaryUrl = localUrl || url;
+  // IP is primary — always short and predictable. .local is shown as an alternative.
   const disp = document.getElementById('server-url-display');
   const copy = document.getElementById('server-url-copy');
   const mailto = document.getElementById('server-url-mailto');
   const fallback = document.getElementById('server-url-fallback');
   if (!disp) return;
-  disp.textContent = primaryUrl;
-  copy._url = primaryUrl;
+  disp.textContent = url;
+  copy._url = url;
   if (fallback) {
     if (localUrl && localUrl !== url) {
-      fallback.textContent = `IP fallback: ${url}`;
+      fallback.textContent = `Also reachable as: ${localUrl}`;
       fallback.style.display = '';
     } else {
       fallback.style.display = 'none';
     }
   }
-  const mailtoBody = encodeURIComponent(`Hi,\n\nYou can access Classify from any device on the school network at:\n${primaryUrl}\n\nLog in with the credentials your admin set up for you.`);
+  const mailtoBody = encodeURIComponent(`Hi,\n\nYou can access Classify from any device on the school network at:\n${url}\n\nLog in with the credentials your admin set up for you.`);
   mailto.href = `mailto:?subject=${encodeURIComponent('Your Classify access link')}&body=${mailtoBody}`;
 }
 
@@ -1675,10 +1734,20 @@ function copyServerUrl() {
   const btn = document.getElementById('server-url-copy');
   const url = btn?._url || document.getElementById('server-url-display')?.textContent;
   if (!url) return;
-  navigator.clipboard.writeText(url).then(() => {
-    btn.textContent = 'Copied!';
-    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
-  });
+  const done = () => { btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = 'Copy'; }, 1500); };
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(url).then(done);
+  } else {
+    // Fallback for non-HTTPS (HTTP LAN) context
+    const ta = document.createElement('textarea');
+    ta.value = url;
+    ta.style.position = 'fixed'; ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+    done();
+  }
 }
 
 function renderSchoolConfigScreen() {
@@ -2631,8 +2700,8 @@ async function renderStudentsScreen() {
         <div class="panel" style="margin-bottom: 16px;">
           <div class="panel-b stats-strip">
             <div class="stat"><div class="stat-label">Total</div><div class="stat-value">${students.length}</div></div>
-            <div class="stat"><div class="stat-label">Girls</div><div class="stat-value">${girls}</div><div class="stat-sub">${Math.round((girls / students.length) * 100)}%</div></div>
-            <div class="stat"><div class="stat-label">Boys</div><div class="stat-value">${boys}</div><div class="stat-sub">${Math.round((boys / students.length) * 100)}%</div></div>
+            <div class="stat"><div class="stat-label">Girls</div><div class="stat-value-row"><div class="stat-value">${girls}</div><div class="stat-sub">${Math.round((girls / students.length) * 100)}%</div></div></div>
+            <div class="stat"><div class="stat-label">Boys</div><div class="stat-value-row"><div class="stat-value">${boys}</div><div class="stat-sub">${Math.round((boys / students.length) * 100)}%</div></div></div>
             <div class="stat"><div class="stat-label">IEP</div><div class="stat-value">${iepCount}</div></div>
             <div class="stat"><div class="stat-label">504 Plan</div><div class="stat-value">${plan504Count}</div></div>
             <div class="stat"><div class="stat-label">ESL</div><div class="stat-value">${eslCount}</div></div>
@@ -5187,6 +5256,7 @@ async function showImportModal(mode, opts = {}) {
 
 function _impRender() {
   const body = document.getElementById('importModalBody');
+  const footer = document.getElementById('importModalFooter');
   const s = _impState;
   const stepLabels = ['Upload','Map columns','Map values','Preview'];
   const crumb = stepLabels.map((lbl,i) => {
@@ -5195,10 +5265,34 @@ function _impRender() {
   }).join('<span style="color:var(--ink-4);margin:0 5px;">›</span>');
   const stepBar = `<div style="margin-bottom:20px;padding-bottom:14px;border-bottom:1px solid var(--line-soft);">${crumb}</div>`;
 
-  if (s.step===1) body.innerHTML = stepBar + _impStep1HTML();
-  else if (s.step===2) body.innerHTML = stepBar + _impStep2HTML();
-  else if (s.step===3) body.innerHTML = stepBar + _impStep3HTML();
-  else if (s.step===4) body.innerHTML = stepBar + _impStep4HTML();
+  if (s.step===1) { body.innerHTML = stepBar + _impStep1HTML(); }
+  else if (s.step===2) { body.innerHTML = stepBar + _impStep2HTML(); }
+  else if (s.step===3) { body.innerHTML = stepBar + _impStep3HTML(); }
+  else if (s.step===4) { body.innerHTML = stepBar + _impStep4HTML(); }
+
+  // Fixed footer navigation
+  if (!footer) return;
+  if (s.step === 1) {
+    footer.style.display = 'none';
+  } else if (s.step === 2) {
+    footer.style.display = '';
+    footer.innerHTML = `
+      <button class="btn ghost" onclick="_impState.step=1;_impRender()">← Back</button>
+      <button class="btn primary" onclick="_impStep2Next()">Next: Map values →</button>`;
+  } else if (s.step === 3) {
+    footer.style.display = '';
+    footer.innerHTML = `
+      <button class="btn ghost" onclick="_impState.step=2;_impRender()">← Back</button>
+      <button class="btn primary" onclick="_impStep3Next()">Next: Preview →</button>`;
+  } else if (s.step === 4) {
+    footer.style.display = '';
+    const backStep = s._backStep ?? 3;
+    const confirmCount = s._confirmCount ?? '?';
+    const dupsResolved = s._dupsResolved !== false;
+    footer.innerHTML = `
+      <button class="btn ghost" onclick="_impState.step=${backStep};_impRender()">← Back</button>
+      <button class="btn primary" id="imp-confirm-btn" ${dupsResolved?'':'disabled'} onclick="_impConfirm()">Import ${confirmCount} students</button>`;
+  }
 }
 
 function _impStep1HTML() {
@@ -5359,11 +5453,7 @@ function _impStep2HTML() {
           </div>
         </div>`;
     })()}
-    <div id="imp-err" style="margin-top:10px;font-size:13px;color:var(--rose);display:none;"></div>
-    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
-      <button class="btn ghost" onclick="_impState.step=1;_impRender()">Back</button>
-      <button class="btn primary" onclick="_impStep2Next()">Next: Map values →</button>
-    </div>`;
+    <div id="imp-err" style="margin-top:10px;font-size:13px;color:var(--rose);display:none;"></div>`;
 }
 
 function _impSetCol(fieldKey, colName) {
@@ -5457,11 +5547,7 @@ function _impStep3HTML() {
       We couldn't automatically recognize these values. Choose what each one means.
     </div>
     <div style="max-height:380px;overflow-y:auto;">${gradeSection}${sections}</div>
-    <div id="imp-err" style="margin-top:10px;font-size:13px;color:var(--rose);display:none;"></div>
-    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
-      <button class="btn ghost" onclick="_impState.step=2;_impRender()">Back</button>
-      <button class="btn primary" onclick="_impStep3Next()">Next: Preview →</button>
-    </div>`;
+    <div id="imp-err" style="margin-top:10px;font-size:13px;color:var(--rose);display:none;"></div>`;
 }
 
 function _impSetVal(fieldKey, rawVal, ourVal) {
@@ -5579,6 +5665,11 @@ function _impStep4HTML() {
     ? Object.values(_impBuildByGrade(s)).reduce((n, arr) => n + arr.length, 0)
     : _impBuildStudents(s).length;
 
+  // Store for footer rendering
+  s._backStep = backStep;
+  s._confirmCount = confirmCount;
+  s._dupsResolved = dupsResolved;
+
   const hasAssignedClass = !!s.colMappings['assignedClass'];
   const assignedClassNote = hasAssignedClass
     ? `<div style="margin-bottom:10px;padding:8px 12px;background:var(--bg-2);border-radius:var(--rad);font-size:12px;color:var(--ink-3);">
@@ -5595,11 +5686,7 @@ function _impStep4HTML() {
     ${dupHTML}
     ${assignedClassNote}
     <div style="overflow:auto;max-height:320px;border:1px solid var(--line);border-radius:var(--rad);">${tableHTML}</div>
-    <div id="imp-err" style="margin-top:10px;font-size:13px;color:var(--rose);display:none;"></div>
-    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px;">
-      <button class="btn ghost" onclick="_impState.step=${backStep};_impRender()">Back</button>
-      <button class="btn primary" id="imp-confirm-btn" ${dupsResolved ? '' : 'disabled'} onclick="_impConfirm()">Import ${confirmCount} students</button>
-    </div>`;
+    <div id="imp-err" style="margin-top:10px;font-size:13px;color:var(--rose);display:none;"></div>`;
 }
 
 function _impBuildByGrade(state) {
@@ -5692,7 +5779,7 @@ async function _impConfirm() {
       closeImportModal();
       await loadGrades();
       if (s.mode === 'schoolYear' && grades.length > 0) {
-        await selectGrade(grades[0].id);
+        showScreen('year-overview');
       } else {
         showScreen('students');
       }

@@ -28,7 +28,7 @@ from werkzeug.security import generate_password_hash as _gen_hash
 def generate_password_hash(password):
     return _gen_hash(password, method='pbkdf2:sha256')
 
-__version__ = '1.1.14'
+__version__ = '1.1.15'
 _UPDATE_URL = 'https://shobel.github.io/classify-website/releases/latest.json'
 _SUPABASE_URL = 'https://vvswzymqizfninwuoumw.supabase.co'
 _SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ2c3d6eW1xaXpmbmlud3VvdW13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgzODg5MTcsImV4cCI6MjA5Mzk2NDkxN30.JuXEoKfKw5VNQHSMweVryNgj0qo19DscnZhK6bLy-Ps'
@@ -822,7 +822,7 @@ def current_user():
 @app.before_request
 def require_login():
     """Block unauthenticated access to everything except login and static files."""
-    public = {'login', 'logout', 'static', 'setup', 'admin_recovery', 'health', 'api_version'}
+    public = {'login', 'logout', 'static', 'setup', 'admin_recovery', 'health', 'api_version', 'api_activation_status', 'api_activate'}
     if request.endpoint in public:
         return None
     if not session.get('user_id'):
@@ -888,7 +888,9 @@ def login():
             else:
                 error = 'Invalid username or password.'
 
-    return render_template('login.html', is_setup=is_setup, error=error)
+    config = load_config()
+    is_activated = config.get('activated', False)
+    return render_template('login.html', is_setup=is_setup, error=error, is_activated=is_activated)
 
 
 @app.route('/logout', methods=['POST'])
@@ -1538,6 +1540,11 @@ def api_grades():
     active_year = request.args.get('year') or config.get('active_school_year', config['school_year'])
     students_data = load_school_year_data(active_year)
 
+    import re as _re
+    def _grade_sort_key(name):
+        m = _re.match(r'^(\d+)', name)
+        return (1, int(m.group(1)), name) if m else (0, 0, name.lower())
+
     grades = []
     for grade_name, grade_data in students_data.items():
         students = grade_data.get('students', [])
@@ -1549,6 +1556,7 @@ def api_grades():
             'classes': grade_data.get('num_classes', 5),
             'status': 'assigned' if has_assignments else ('imported' if students else 'empty')
         })
+    grades.sort(key=lambda g: _grade_sort_key(g['name']))
     return jsonify(grades)
 
 @app.route('/api/grades/add-grade', methods=['POST'])
@@ -1989,8 +1997,13 @@ def api_activate():
         method='POST',
     )
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with urllib.request.urlopen(req, timeout=10, context=_make_ssl_context()) as resp:
             result = json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        try:
+            result = json.loads(e.read())
+        except Exception:
+            result = {}
     except urllib.error.URLError:
         return jsonify({'error': 'Could not reach activation server. Check your internet connection.'}), 503
     except Exception:
@@ -2003,7 +2016,7 @@ def api_activate():
     config['activated'] = True
     config['activation_code'] = code
     save_config(config)
-    return jsonify({'status': 'success'})
+    return jsonify({'activated': True})
 
 
 @app.route('/api/config', methods=['GET', 'POST'])
@@ -2358,16 +2371,23 @@ def api_server_info():
     return jsonify({'ip': ip, 'port': port, 'url': f'http://{ip}:{port}', 'local_url': local_url})
 
 
+def _make_ssl_context():
+    try:
+        import certifi
+        return __import__('ssl').create_default_context(cafile=certifi.where())
+    except ImportError:
+        return __import__('ssl').create_default_context()
+
 def _check_subscription_active():
     """Query Supabase for is_active on the stored activation code.
     Falls back to cached value so it works offline. Defaults to True."""
-    import urllib.request, ssl, certifi
+    import urllib.request
     config = load_config()
     code = config.get('activation_code')
     if not code:
         return True  # not activated yet — don't block
     try:
-        ctx = ssl.create_default_context(cafile=certifi.where())
+        ctx = _make_ssl_context()
         url = f'{_SUPABASE_URL}/rest/v1/activation_codes?code=eq.{code}&select=is_active'
         req = urllib.request.Request(url, headers={
             'apikey': _SUPABASE_ANON_KEY,
@@ -2388,12 +2408,10 @@ def _check_subscription_active():
 def api_check_update():
     """Check for app updates by fetching the remote manifest."""
     import urllib.request
-    import ssl
-    import certifi
     is_local = request.remote_addr in ('127.0.0.1', '::1')
     subscription_active = _check_subscription_active()
     try:
-        ctx = ssl.create_default_context(cafile=certifi.where())
+        ctx = _make_ssl_context()
         req = urllib.request.Request(_UPDATE_URL, headers={'User-Agent': f'Classify/{__version__}', 'Cache-Control': 'no-cache', 'Pragma': 'no-cache'})
         with urllib.request.urlopen(req, timeout=5, context=ctx) as resp:
             data = json.loads(resp.read().decode())

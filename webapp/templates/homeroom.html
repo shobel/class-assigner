@@ -150,21 +150,6 @@
             <span class="nav-label">Getting started</span>
           </div>
           {% if is_admin %}
-          <div class="nav-item" id="nav-config" onclick="showScreen('config')">
-            <svg
-              class="nav-icon"
-              width="14"
-              height="14"
-              viewBox="0 0 14 14"
-              fill="currentColor"
-            >
-              <path d="M7 9a2 2 0 100-4 2 2 0 000 4z" />
-              <path
-                d="M12 7c0-.34-.03-.67-.08-1h1.33l-.75-1.3-1.33.77a5 5 0 00-1.42-1.42l.77-1.33-1.3-.75-1 1.33a5 5 0 00-2 0l-1-1.33-1.3.75.77 1.33a5 5 0 00-1.42 1.42l-1.33-.77-.75 1.3h1.33c-.05.33-.08.66-.08 1s.03.67.08 1H.25l.75 1.3 1.33-.77a5 5 0 001.42 1.42l-.77 1.33 1.3.75 1-1.33a5 5 0 002 0l1 1.33 1.3-.75-.77-1.33a5 5 0 001.42-1.42l1.33.77.75-1.3h-1.33c.05-.33.08-.66.08-1z"
-              />
-            </svg>
-            <span class="nav-label">Rules & weights</span>
-          </div>
           <div
             class="nav-item"
             id="nav-school-config"
@@ -182,6 +167,21 @@
               />
             </svg>
             <span class="nav-label">School config</span>
+          </div>
+          <div class="nav-item" id="nav-config" onclick="showScreen('config')">
+            <svg
+              class="nav-icon"
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="currentColor"
+            >
+              <path d="M7 9a2 2 0 100-4 2 2 0 000 4z" />
+              <path
+                d="M12 7c0-.34-.03-.67-.08-1h1.33l-.75-1.3-1.33.77a5 5 0 00-1.42-1.42l.77-1.33-1.3-.75-1 1.33a5 5 0 00-2 0l-1-1.33-1.3.75.77 1.33a5 5 0 00-1.42 1.42l-1.33-.77-.75 1.3h1.33c-.05.33-.08.66-.08 1s.03.67.08 1H.25l.75 1.3 1.33-.77a5 5 0 001.42 1.42l-.77 1.33 1.3.75 1-1.33a5 5 0 002 0l1 1.33 1.3-.75-.77-1.33a5 5 0 001.42-1.42l1.33.77.75-1.3h-1.33c.05-.33.08-.66.08-1z"
+              />
+            </svg>
+            <span class="nav-label">Rules & weights</span>
           </div>
           {% endif %}
           {% if is_admin %}
@@ -310,6 +310,9 @@
         </div>
         <div class="modal-body" id="importModalBody">
           <!-- Import content -->
+        </div>
+        <div class="modal-footer" id="importModalFooter" style="display:none;">
+          <!-- Navigation buttons -->
         </div>
       </div>
     </div>
@@ -988,7 +991,7 @@
       window.classifyVersion  = {{ current_version | tojson }};
     </script>
     <script src="/static/js/sync-client.js?v=5"></script>
-    <script src="/static/js/homeroom-app.js?v=81"></script>
+    <script src="/static/js/homeroom-app.js?v=82"></script>
     <script src="/static/js/transition.js?v=45"></script>
     <script src="/static/js/onboarding.js"></script>
     <script>

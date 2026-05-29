@@ -103,6 +103,66 @@
   <body>
     <div class="login-card">
       <div class="login-brand"><span>Class</span>ify</div>
+
+      {% if not is_activated %}
+      <div id="act-step">
+        <div class="login-subtitle">Enter your activation code to get started.</div>
+        <div id="act-error" style="display:none;" class="login-error"></div>
+        <label for="act-input">Activation code</label>
+        <input id="act-input" type="text" placeholder="XXXX-XXXX-XXXX" autocomplete="off" autofocus oninput="this.value=this.value.toUpperCase()" />
+        <button class="login-btn" onclick="submitCode()">Activate</button>
+      </div>
+      <div id="act-restore" style="display:none;">
+        <div style="font-size:14px;font-weight:500;color:var(--ink);margin-bottom:6px;">Activated!</div>
+        <div class="login-subtitle" style="margin-bottom:24px;">Are you transferring from another computer?</div>
+        <button class="login-btn" onclick="window.location.reload()">Start fresh</button>
+        <label style="display:flex;align-items:center;justify-content:center;width:100%;box-sizing:border-box;cursor:pointer;font-size:13px;color:var(--ink-3);padding:10px 0;gap:6px;margin-top:4px;">
+          <input type="file" accept=".classify" style="display:none" onchange="handleRestore(this)">
+          Restoring from another computer? <span style="color:var(--terra);text-decoration:underline;text-underline-offset:2px;">Restore from backup</span>
+        </label>
+        <div id="restore-status" style="display:none;font-size:12px;text-align:center;margin-top:8px;"></div>
+      </div>
+      <script>
+        async function submitCode() {
+          const code = document.getElementById('act-input').value.trim().toUpperCase();
+          const errEl = document.getElementById('act-error');
+          if (!code) { errEl.textContent = 'Please enter your activation code.'; errEl.style.display = ''; return; }
+          const btn = event.target;
+          btn.textContent = 'Checking…'; btn.disabled = true;
+          try {
+            const res = await fetch('/api/activate', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({code}) });
+            const data = await res.json();
+            if (data.activated) {
+              document.getElementById('act-step').style.display = 'none';
+              document.getElementById('act-restore').style.display = '';
+            } else {
+              errEl.textContent = data.error || 'Invalid code.'; errEl.style.display = ''; btn.textContent = 'Activate'; btn.disabled = false;
+            }
+          } catch(e) { errEl.textContent = 'Network error.'; errEl.style.display = ''; btn.textContent = 'Activate'; btn.disabled = false; }
+        }
+        document.getElementById('act-input').addEventListener('keydown', e => { if (e.key === 'Enter') submitCode(); });
+
+        async function handleRestore(input) {
+          const file = input.files[0];
+          if (!file) return;
+          const statusEl = document.getElementById('restore-status');
+          statusEl.textContent = 'Restoring…'; statusEl.style.color = 'var(--ink-3)'; statusEl.style.display = '';
+          const formData = new FormData();
+          formData.append('file', file);
+          try {
+            const res = await fetch('/api/import-data', { method: 'POST', body: formData });
+            const data = await res.json();
+            if (res.ok) {
+              statusEl.textContent = 'Restored! Starting…'; statusEl.style.color = 'var(--sage)';
+              setTimeout(() => window.location.reload(), 1000);
+            } else {
+              statusEl.textContent = data.error || 'Restore failed. Try again or start fresh.'; statusEl.style.color = 'var(--rose)';
+            }
+          } catch(e) { statusEl.textContent = 'Restore failed. Check the file and try again.'; statusEl.style.color = 'var(--rose)'; }
+        }
+      </script>
+      {% else %}
+
       <div class="login-subtitle">
         {% if is_setup %}Create your admin account to get started.{% else %}Sign in to continue.{% endif %}
       </div>
@@ -140,6 +200,8 @@
         Admin? <a href="/admin-recovery" style="color:var(--terra);text-decoration:none;">Reset your password</a> from the server machine.<br>
         Teacher? Contact your admin to send you a new invite link.
       </div>
+      {% endif %}
+
       {% endif %}
     </div>
   </body>

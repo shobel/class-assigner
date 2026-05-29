@@ -177,6 +177,12 @@
   color: var(--ink);
 }
 
+.stats-strip .stat-value-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
 .stats-strip .stat-sub {
   font-family: var(--t-mono);
   font-size: 9px;
