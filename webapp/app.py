@@ -48,7 +48,9 @@ def get_resource_path(relative_path):
 
 def get_data_dir():
     """Return platform-appropriate user data directory."""
-    if getattr(sys, 'frozen', False):
+    if os.environ.get('CLASSIFY_DATA_DIR'):
+        data_dir = Path(os.environ['CLASSIFY_DATA_DIR'])
+    elif getattr(sys, 'frozen', False):
         system = platform.system()
         if system == 'Darwin':
             data_dir = Path.home() / 'Library' / 'Application Support' / 'Classify'
@@ -1531,9 +1533,9 @@ def api_create_next_year_manual():
 
 @app.route('/api/grades', methods=['GET'])
 def api_grades():
-    """Get all grades for active school year"""
+    """Get all grades for active school year (or ?year= override)"""
     config = load_config()
-    active_year = config.get('active_school_year', config['school_year'])
+    active_year = request.args.get('year') or config.get('active_school_year', config['school_year'])
     students_data = load_school_year_data(active_year)
 
     grades = []
@@ -1602,9 +1604,12 @@ def api_delete_grade(grade_id):
 
 @app.route('/api/grades/<grade_id>/students', methods=['GET', 'POST'])
 def api_grade_students(grade_id):
-    """Get or update students for a grade"""
+    """Get or update students for a grade (GET supports ?year= override)"""
     config = load_config()
-    active_year = config.get('active_school_year', config['school_year'])
+    if request.method == 'GET':
+        active_year = request.args.get('year') or config.get('active_school_year', config['school_year'])
+    else:
+        active_year = config.get('active_school_year', config['school_year'])
     students_data = load_school_year_data(active_year)
 
     # Find grade by converting ID back to name
@@ -1674,9 +1679,12 @@ def api_grade_students(grade_id):
 
 @app.route('/api/grades/<grade_id>/assignments', methods=['GET', 'POST'])
 def api_grade_assignments(grade_id):
-    """Get or update assignments for a grade"""
+    """Get or update assignments for a grade (GET supports ?year= override)"""
     config = load_config()
-    active_year = config.get('active_school_year', config['school_year'])
+    if request.method == 'GET':
+        active_year = request.args.get('year') or config.get('active_school_year', config['school_year'])
+    else:
+        active_year = config.get('active_school_year', config['school_year'])
     students_data = load_school_year_data(active_year)
 
     grade_name = None

@@ -9,18 +9,24 @@ let transitionData = {
 // Show transition wizard
 async function showTransitionWizard() {
   const config = await (await fetch('/api/config')).json();
-  const currentYear = config.active_school_year;
+  const yearsRes = await (await fetch('/api/school-years')).json();
 
-  // Calculate next year
-  const startYear = parseInt(currentYear.split('–')[0]);
+  // Calculate next year from the highest existing year, not the active one
+  const allYears = yearsRes.years || [config.active_school_year];
+  const highestYear = allYears.reduce((best, y) => {
+    const yr = parseInt(y.split(/[–—-]/)[0]);
+    return yr > parseInt(best.split(/[–—-]/)[0]) ? y : best;
+  }, allYears[0]);
+  const startYear = parseInt(highestYear.split(/[–—-]/)[0]);
   const nextYear = `${startYear + 1}–${String(startYear + 2).slice(-2)}`;
 
   transitionData.nextYear = nextYear;
   transitionData.maxGrade = config.max_grade || '8th Grade';
   document.getElementById('next-year-name').textContent = nextYear;
 
-  // Load current year data
-  const currentData = await (await fetch(`/api/grades`)).json();
+  // Load grade data from the highest year (not necessarily the active/selected one)
+  const yearParam = encodeURIComponent(highestYear);
+  const currentData = await (await fetch(`/api/grades?year=${yearParam}`)).json();
 
   // Prepare promoted grades
   const allGradeOrder = ['Kindergarten', '1st Grade', '2nd Grade', '3rd Grade', '4th Grade', '5th Grade', '6th Grade', '7th Grade', '8th Grade'];
@@ -55,7 +61,7 @@ async function showTransitionWizard() {
   // Carry Kindergarten's own settings forward (it keeps its slot, just gets new students)
   const kinderGrade = currentData.find(g => g.id === 'kindergarten');
   if (kinderGrade) {
-    const kinderRes = await fetch(`/api/grades/kindergarten/students`);
+    const kinderRes = await fetch(`/api/grades/kindergarten/students?year=${yearParam}`);
     const kinderData = await kinderRes.json();
     transitionData.gradeSettings['Kindergarten'] = {
       num_classes: kinderData.num_classes || 3,
@@ -67,8 +73,8 @@ async function showTransitionWizard() {
   for (const grade of currentData) {
     const nextGradeName = gradeMap[grade.id];
     if (nextGradeName) {
-      // Fetch students (includes teachers list and grade settings)
-      const studentsRes = await fetch(`/api/grades/${grade.id}/students`);
+      // Fetch students from the highest year
+      const studentsRes = await fetch(`/api/grades/${grade.id}/students?year=${yearParam}`);
       const studentsData = await studentsRes.json();
       const teachers = studentsData.teachers || [];
 
@@ -79,7 +85,7 @@ async function showTransitionWizard() {
       };
 
       // Fetch assignments to know which class each student was in
-      const assignRes = await fetch(`/api/grades/${grade.id}/assignments`);
+      const assignRes = await fetch(`/api/grades/${grade.id}/assignments?year=${yearParam}`);
       const assignData = await assignRes.json();
       const assignmentMap = {};
       for (const a of (assignData.assignments || [])) {

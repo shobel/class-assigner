@@ -936,40 +936,40 @@ function renderYearOverviewScreen() {
   const year = config.active_school_year || config.school_year;
   const hasAssignable = grades.some(g => g.status !== 'empty');
 
-  const cards = grades.map(g => {
-    let statusBadge = '';
-    let statusClass = '';
+  const rows = grades.map(g => {
+    let badgeHtml = '';
     if (g.status === 'assigned') {
-      statusBadge = `<span class="yo-badge assigned">${g.classes} class${g.classes !== 1 ? 'es' : ''}</span>`;
-      statusClass = 'assigned';
+      badgeHtml = `<span class="yo-badge assigned">${g.classes} class${g.classes !== 1 ? 'es' : ''}</span>`;
     } else if (g.status === 'imported') {
-      statusBadge = `<span class="yo-badge pending">Not assigned</span>`;
-      statusClass = 'pending';
+      badgeHtml = `<span class="yo-badge pending">Not assigned</span>`;
     } else {
-      statusBadge = `<span class="yo-badge empty">Empty</span>`;
-      statusClass = 'empty';
+      badgeHtml = `<span class="yo-badge empty">Empty</span>`;
     }
 
+    const runBtn = g.status !== 'empty'
+      ? `<button class="btn sm ghost" id="yo-run-${g.id}"
+           onclick="event.stopPropagation(); runAssignmentForGrade('${g.id}')">${g.status === 'assigned' ? 'Re-run' : 'Run'}</button>`
+      : '';
+
     return `
-      <div class="yo-card ${statusClass}" id="yo-card-${g.id}" onclick="selectGrade('${g.id}')">
-        <div class="yo-card-header">
-          <span class="yo-grade-name">${g.name}</span>
-          ${statusBadge}
-        </div>
-        <div class="yo-card-meta">${g.students} student${g.students !== 1 ? 's' : ''}</div>
-        ${g.status !== 'empty' ? `<button class="btn sm ghost yo-run-btn" id="yo-run-${g.id}"
-          onclick="event.stopPropagation(); runAssignmentForGrade('${g.id}')">Run</button>` : ''}
+      <div class="yo-row" id="yo-card-${g.id}" onclick="selectGrade('${g.id}')">
+        <span class="yo-name">${g.name}</span>
+        <span class="yo-students">${g.students} student${g.students !== 1 ? 's' : ''}</span>
+        <span class="yo-status" id="yo-status-${g.id}">${badgeHtml}</span>
+        <span class="yo-action">${runBtn}</span>
       </div>
     `;
   }).join('');
 
   return `
-    <div class="yo-header">
-      <h1>${year}</h1>
-      ${hasAssignable ? `<button class="btn primary" onclick="runAllAssignments()">Assign all grades</button>` : ''}
-    </div>
-    <div class="yo-grid">
-      ${cards || '<p style="color:var(--ink-3);padding:20px">No grades yet.</p>'}
+    <div class="canvas">
+      <div class="page-hd">
+        <h1>${year}</h1>
+        ${hasAssignable ? `<button class="btn primary sm" onclick="runAllAssignments()">Assign all grades</button>` : ''}
+      </div>
+      <div class="yo-list">
+        ${rows || '<p style="color:var(--ink-3)">No grades yet.</p>'}
+      </div>
     </div>
   `;
 }
@@ -984,16 +984,9 @@ async function runAssignmentForGrade(gradeId) {
     const result = await res.json();
     if (res.ok && result.status === 'success') {
       await loadGrades();
-      // Update just this card without full re-render
-      const g = grades.find(g => g.id === gradeId);
-      if (card && g) {
-        card.className = `yo-card assigned`;
-        card.querySelector('.yo-card-header').innerHTML = `
-          <span class="yo-grade-name">${g.name}</span>
-          <span class="yo-badge assigned">${result.num_classes} class${result.num_classes !== 1 ? 'es' : ''}</span>
-        `;
-        if (btn) { btn.disabled = false; btn.textContent = 'Re-run'; }
-      }
+      const statusEl = document.getElementById(`yo-status-${gradeId}`);
+      if (statusEl) statusEl.innerHTML = `<span class="yo-badge assigned">${result.num_classes} class${result.num_classes !== 1 ? 'es' : ''}</span>`;
+      if (btn) { btn.disabled = false; btn.textContent = 'Re-run'; }
     } else {
       showNotice(result.error || 'Assignment failed', 'error');
       if (btn) { btn.disabled = false; btn.textContent = 'Run'; }
