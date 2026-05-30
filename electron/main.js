@@ -194,6 +194,33 @@ async function startWindowsServer() {
   await waitForServer(30000);
 }
 
+// ── Server health monitor ─────────────────────────────────────────────────────
+
+function startHealthMonitor() {
+  let wasHealthy = true;
+  setInterval(async () => {
+    const healthy = await checkHealth();
+    if (!healthy && wasHealthy) {
+      wasHealthy = false;
+      if (mainWindow) {
+        mainWindow.setTitle('Classify — Server Offline');
+        if (process.platform !== 'darwin') {
+          dialog.showMessageBox(mainWindow, {
+            type: 'warning',
+            buttons: ['OK'],
+            title: 'Classify — Server Offline',
+            message: 'The Classify server has stopped responding.',
+            detail: 'Quit and relaunch Classify to restart the server. Teachers will not be able to connect until then.',
+          });
+        }
+      }
+    } else if (healthy && !wasHealthy) {
+      wasHealthy = true;
+      if (mainWindow) mainWindow.setTitle('Classify');
+    }
+  }, 30000);
+}
+
 // ── Window ────────────────────────────────────────────────────────────────────
 
 function createWindow() {
@@ -310,6 +337,7 @@ function buildMenu() {
 
 app.whenReady().then(async () => {
   buildMenu();
+  app.setLoginItemSettings({ openAtLogin: true });
 
   try {
     if (app.isPackaged) {
@@ -322,6 +350,7 @@ app.whenReady().then(async () => {
       await startFlaskDev();
     }
     createWindow();
+    startHealthMonitor();
   } catch (err) {
     dialog.showErrorBox('Classify — startup error', `Could not start the server:\n\n${err.message}`);
     app.quit();
