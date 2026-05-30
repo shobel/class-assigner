@@ -184,6 +184,7 @@ async function startWindowsServer() {
     cwd: path.dirname(bin),
     stdio: ['ignore', out, err],
     detached: false,
+    windowsHide: true,
   });
 
   flaskProcess.on('error', (e) => {
