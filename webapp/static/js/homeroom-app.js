@@ -2516,12 +2516,6 @@ async function renderStudentsScreen() {
 
   const hasAssignments = assignments.length > 0;
 
-  console.log("DEBUG renderStudentsScreen - hasAssignments:", hasAssignments);
-  console.log("DEBUG renderStudentsScreen - assignData:", assignData);
-  console.log(
-    "DEBUG renderStudentsScreen - solver_status:",
-    assignData?.solver_status,
-  );
 
   // Set globals (don't overwrite in-memory assignment state when editing)
   window.currentStudents = students;
@@ -3126,12 +3120,6 @@ async function renderResultsScreen() {
   window.gradeMaxStudents = data.max_students;
   window.gradeEnforceClassSize = data.enforce_class_size === true;
 
-  console.log("DEBUG renderResultsScreen - hasAssignments:", hasAssignments);
-  console.log("DEBUG renderResultsScreen - assignData:", assignData);
-  console.log(
-    "DEBUG renderResultsScreen - solver_status:",
-    assignData?.solver_status,
-  );
 
   return `
     <div class="canvas">
@@ -8010,8 +7998,8 @@ function showGradeInfoModal() {
       <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line-soft);">
         <h3 style="font-size:12px;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-3);margin:0 0 10px;">Hover indicators</h3>
         <table style="width:100%;border-collapse:collapse;font-size:13px;">
-          <tr><td style="padding:5px 10px 5px 0;font-weight:600;color:var(--sage);width:30px;">F</td><td style="padding:5px 0;color:var(--ink-3);font-size:12px;">Student has a friend in the same class</td></tr>
-          <tr><td style="padding:5px 10px 5px 0;font-weight:600;color:var(--error);font-size:16px;">⊘</td><td style="padding:5px 0;color:var(--ink-3);font-size:12px;">Student is placed with an incompatible classmate</td></tr>
+          <tr><td style="padding:5px 10px 5px 0;font-weight:600;color:var(--sage);width:30px;">F</td><td style="padding:5px 0;color:var(--ink-3);font-size:12px;">This student is a friend of the one you're hovering over</td></tr>
+          <tr><td style="padding:5px 10px 5px 0;font-weight:600;color:var(--error);font-size:16px;">⊘</td><td style="padding:5px 0;color:var(--ink-3);font-size:12px;">This student should be separated from the one you're hovering over</td></tr>
         </table>
       </div>
     </div>

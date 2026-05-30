@@ -15,7 +15,8 @@ let flaskProcess = null; // dev mode only
 
 // Returns the server binary path inside the app bundle (includes _internal/ alongside it)
 function getServerBin() {
-  return path.join(process.resourcesPath, 'server', 'classify-server');
+  const name = process.platform === 'win32' ? 'classify-server.exe' : 'classify-server';
+  return path.join(process.resourcesPath, 'server', name);
 }
 
 // ── Health check ──────────────────────────────────────────────────────────────
@@ -167,6 +168,31 @@ function startFlaskDev() {
   });
 }
 
+// ── Windows packaged: spawn bundled exe directly ──────────────────────────────
+
+async function startWindowsServer() {
+  const bin = getServerBin();
+  const logDir = path.join(app.getPath('appData'), 'Classify', 'logs');
+  fs.mkdirSync(logDir, { recursive: true });
+
+  const outLog = path.join(logDir, 'server.log');
+  const errLog = path.join(logDir, 'server-error.log');
+  const out = fs.openSync(outLog, 'a');
+  const err = fs.openSync(errLog, 'a');
+
+  flaskProcess = spawn(bin, [], {
+    cwd: path.dirname(bin),
+    stdio: ['ignore', out, err],
+    detached: false,
+  });
+
+  flaskProcess.on('error', (e) => {
+    dialog.showErrorBox('Classify — server error', `Could not start server:\n\n${e.message}\n\nBinary: ${bin}`);
+  });
+
+  await waitForServer(30000);
+}
+
 // ── Window ────────────────────────────────────────────────────────────────────
 
 function createWindow() {
@@ -195,6 +221,11 @@ function createWindow() {
 // ── Menu ──────────────────────────────────────────────────────────────────────
 
 async function uninstallClassify() {
+  const isMac = process.platform === 'darwin';
+  const afterDetail = isMac
+    ? 'After uninstalling, drag Classify from your Applications folder to the Trash to finish removing it.'
+    : 'After uninstalling, remove Classify via Settings → Apps to finish removing it.';
+
   const { response } = await dialog.showMessageBox(mainWindow, {
     type: 'warning',
     buttons: ['Cancel', 'Uninstall'],
@@ -202,22 +233,30 @@ async function uninstallClassify() {
     cancelId: 0,
     title: 'Uninstall Classify',
     message: 'This will permanently delete all Classify data.',
-    detail: 'All student rosters, class placements, school years, user accounts, and settings will be deleted from this computer. This cannot be undone.\n\nAfter uninstalling, drag Classify from your Applications folder to the Trash to finish removing it.',
+    detail: `All student rosters, class placements, school years, user accounts, and settings will be deleted from this computer. This cannot be undone.\n\n${afterDetail}`,
   });
   if (response !== 1) return;
 
-  // Stop and remove launchd service
-  if (fs.existsSync(SERVICE_PLIST)) {
-    try { await launchctl('unload', SERVICE_PLIST); } catch {}
-    fs.rmSync(SERVICE_PLIST, { force: true });
-  }
-
-  // Remove data directories
-  const dataDir = path.join(os.homedir(), 'Library', 'Application Support', 'Classify');
-  const electronDir = path.join(os.homedir(), 'Library', 'Application Support', 'classify');
-  const logsDir = path.join(os.homedir(), 'Library', 'Logs', 'Classify');
-  for (const dir of [dataDir, electronDir, logsDir]) {
-    fs.rmSync(dir, { recursive: true, force: true });
+  if (isMac) {
+    // Stop and remove launchd service
+    if (fs.existsSync(SERVICE_PLIST)) {
+      try { await launchctl('unload', SERVICE_PLIST); } catch {}
+      fs.rmSync(SERVICE_PLIST, { force: true });
+    }
+    const dataDir = path.join(os.homedir(), 'Library', 'Application Support', 'Classify');
+    const electronDir = path.join(os.homedir(), 'Library', 'Application Support', 'classify');
+    const logsDir = path.join(os.homedir(), 'Library', 'Logs', 'Classify');
+    for (const dir of [dataDir, electronDir, logsDir]) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  } else {
+    // Windows: kill server process, remove data dirs
+    if (flaskProcess) { flaskProcess.kill(); flaskProcess = null; }
+    const dataDir = path.join(app.getPath('appData'), 'Classify');
+    const electronDir = path.join(app.getPath('appData'), 'classify');
+    for (const dir of [dataDir, electronDir]) {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   }
 
   await dialog.showMessageBox({
@@ -225,7 +264,9 @@ async function uninstallClassify() {
     buttons: ['Quit'],
     title: 'Classify uninstalled',
     message: 'Classify has been uninstalled.',
-    detail: 'All data has been removed. Drag Classify from your Applications folder to the Trash to finish.',
+    detail: isMac
+      ? 'All data has been removed. Drag Classify from your Applications folder to the Trash to finish.'
+      : 'All data has been removed. Remove Classify via Settings → Apps to finish.',
   });
   app.quit();
 }
@@ -239,7 +280,13 @@ function buildMenu() {
       { role: 'unhide' }, { type: 'separator' },
       { label: 'Uninstall Classify…', click: () => uninstallClassify() },
       { type: 'separator' }, { role: 'quit' },
-    ]}] : []),
+    ]}] : [
+      { label: 'File', submenu: [
+        { label: 'Uninstall Classify…', click: () => uninstallClassify() },
+        { type: 'separator' },
+        { role: 'quit' },
+      ]},
+    ]),
     { label: 'Edit', submenu: [
       { role: 'undo' }, { role: 'redo' }, { type: 'separator' },
       { role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' },
@@ -264,8 +311,12 @@ app.whenReady().then(async () => {
   buildMenu();
 
   try {
-    if (app.isPackaged && process.platform === 'darwin') {
-      await ensureService();
+    if (app.isPackaged) {
+      if (process.platform === 'darwin') {
+        await ensureService();
+      } else {
+        await startWindowsServer();
+      }
     } else {
       await startFlaskDev();
     }
